@@ -1,0 +1,48 @@
+import type { Context, MiddlewareHandler } from 'hono'
+import type { ContentfulStatusCode } from 'hono/utils/http-status'
+import type { AppEnv, RateBucket } from '../types'
+
+export function fail(c: Context, status: ContentfulStatusCode, error: string, extra: Record<string, unknown> = {}) {
+  return c.json({ error, ...extra }, status)
+}
+
+export function ip(c: Context<AppEnv>): string {
+  return c.var.p.clientIp(c.req.raw, c.env)
+}
+
+/** 按 IP 限流；登录用户的写操作按用户限流 */
+export function rateLimit(bucket: RateBucket): MiddlewareHandler<AppEnv> {
+  return async (c, next) => {
+    const key = bucket === 'write' && c.var.user ? `u:${c.var.user.id}` : `ip:${ip(c)}`
+    if (!(await c.var.p.rateLimit.limit(bucket, key))) {
+      return fail(c, 429, '请求过于频繁，请稍后再试')
+    }
+    await next()
+  }
+}
+
+export const requireUser: MiddlewareHandler<AppEnv> = async (c, next) => {
+  if (!c.var.user) return fail(c, 401, '请先登录')
+  await next()
+}
+
+export const requireAdmin: MiddlewareHandler<AppEnv> = async (c, next) => {
+  if (!c.var.user) return fail(c, 401, '请先登录')
+  if (c.var.user.role !== 'admin') return fail(c, 403, '需要管理员权限')
+  await next()
+}
+
+export async function body<T = Record<string, unknown>>(c: Context): Promise<Partial<T>> {
+  try {
+    const b = await c.req.json()
+    return b && typeof b === 'object' ? b : {}
+  } catch {
+    return {}
+  }
+}
+
+export function str(v: unknown, max = 200): string | null {
+  if (typeof v !== 'string') return null
+  const s = v.trim()
+  return s.length > 0 && s.length <= max ? s : null
+}

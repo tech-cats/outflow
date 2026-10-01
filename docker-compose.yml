@@ -1,0 +1,15 @@
+services:
+  outflow:
+    build:
+      context: .
+      # 国内网络可改为 https://registry.npmmirror.com
+      args:
+        NPM_REGISTRY: https://registry.npmjs.org
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+    volumes:
+      - ./data:/data

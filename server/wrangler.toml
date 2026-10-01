@@ -1,0 +1,64 @@
+name = "outflow"
+main = "src/entry/worker.ts"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+# 由 scripts/setup-cf.mjs 自动填写 database_id
+[[d1_databases]]
+binding = "DB"
+database_name = "outflow"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "UPLOADS"
+bucket_name = "outflow-uploads"
+
+[[durable_objects.bindings]]
+name = "COLLAB"
+class_name = "CollabRoom"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["CollabRoom"]
+
+[assets]
+directory = "../web/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = true
+
+# 限流：period 只能是 10 或 60 秒
+[[ratelimits]]
+name = "RL_AUTH"
+namespace_id = "1001"
+simple = { limit = 10, period = 60 }
+
+[[ratelimits]]
+name = "RL_WRITE"
+namespace_id = "1002"
+simple = { limit = 120, period = 60 }
+
+[[ratelimits]]
+name = "RL_READ"
+namespace_id = "1003"
+simple = { limit = 300, period = 60 }
+
+[vars]
+APP_NAME = "Outflow"
+# 留空则使用请求的 origin
+APP_URL = ""
+# 逗号分隔：*.edu.cn（含子域）、@pku.edu.cn（精确域名）、someone@gmail.com（单个邮箱）
+ALLOWED_EMAIL_DOMAINS = "*.edu.cn"
+REGISTRATION_ENABLED = "true"
+# altcha | turnstile | hcaptcha | none
+CAPTCHA_PROVIDER = "altcha"
+CAPTCHA_SITE_KEY = ""
+# smtp | resend | console
+MAIL_DRIVER = "console"
+MAIL_FROM = "Outflow <noreply@example.com>"
+SMTP_HOST = ""
+SMTP_PORT = "465"
+SMTP_SECURE = "true"
+SMTP_USER = ""
+# 机密项用 wrangler secret put 设置：SESSION_SECRET、SMTP_PASS、CAPTCHA_SECRET、RESEND_API_KEY
