@@ -3,9 +3,11 @@ import type { Context } from 'hono'
 import { getCookie } from 'hono/cookie'
 import { canEditChain, chainReadable, effectiveVisibility, hasRole, filterReadable, loadChain, type DocNode } from '../core/access'
 import { SESSION_COOKIE } from '../core/auth'
+import { listComments } from '../core/comments'
 import { searchDocs } from '../core/search'
 import { escapeHtml, jsonToHtml } from '../lib/prosemirror'
 import type { AppEnv, PMNode } from '../types'
+import { Discussion } from '../views/comments'
 import { Layout, Time, Tree, VisBadge } from '../views/layout'
 import { rateLimit } from './util'
 
@@ -186,14 +188,17 @@ pages.get('/d/:id', rateLimit('read'), (c) =>
     }
     const vis = effectiveVisibility(chain)
     const canEdit = canEditChain(user, chain)
-    const [col, tree, editor] = await Promise.all([
+    const [col, tree, editor, comments] = await Promise.all([
       p.db.get<{ id: string; name: string }>('SELECT id, name FROM collections WHERE id = ?', doc.collection_id),
       p.db.all<TreeRow>(
         'SELECT id, parent_id, title, visibility, author_id, collection_id, updated_at FROM docs WHERE collection_id = ? ORDER BY sort, created_at',
         doc.collection_id,
       ),
       p.db.get<{ name: string }>('SELECT name FROM users WHERE id = ?', doc.updated_by ?? doc.author_id),
+      // 评论只给登录用户看，匿名页面因此可以安全地进入缓存
+      user ? listComments(p.db, doc.id) : [],
     ])
+    const openNotes = comments.filter((x) => x.anchor && !x.parentId && !x.resolved).length
     const readableTree = filterReadable(user, tree)
     const titles = new Map(tree.map((d) => [d.id, d.title]))
     const crumbs = chain.slice(1).reverse()
@@ -239,6 +244,11 @@ pages.get('/d/:id', rateLimit('read'), (c) =>
                   <a class="btn btn-sm" href={`/api/docs/${doc.id}/export.md`}>
                     导出 Markdown
                   </a>
+                  {user && (
+                    <a class="btn btn-sm" href={`/edit/${doc.id}?comments=1`} title="选中文字即可添加批注">
+                      批注{openNotes > 0 && ` · ${openNotes}`}
+                    </a>
+                  )}
                   {canEdit && (
                     <a class="btn btn-primary btn-sm" href={`/edit/${doc.id}`}>
                       编辑
@@ -247,6 +257,7 @@ pages.get('/d/:id', rateLimit('read'), (c) =>
                 </span>
               </div>
               <div class="prose" dangerouslySetInnerHTML={{ __html: html || '<p class="muted">（空文档）</p>' }} />
+              {user && <Discussion docId={doc.id} comments={comments} userId={user.id} canModerate={hasRole(user, 'editor')} />}
             </article>
           </main>
         </div>

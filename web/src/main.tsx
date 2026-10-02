@@ -1,6 +1,6 @@
 import { RouterProvider, createRootRoute, createRoute, createRouter, lazyRouteComponent, Outlet } from '@tanstack/react-router'
 import { createRoot } from 'react-dom/client'
-import { baseCss } from '../../server/src/views/styles'
+import { POWERED_BY, baseCss } from '../../server/src/views/styles'
 import './app.css'
 import { AdminPage } from './pages/Admin'
 import { NewPage } from './pages/New'
@@ -15,6 +15,7 @@ const rootRoute = createRootRoute({
   component: () => (
     <SessionProvider>
       <Outlet />
+      <footer className="site-footer" dangerouslySetInnerHTML={{ __html: POWERED_BY }} />
     </SessionProvider>
   ),
   notFoundComponent: () => (

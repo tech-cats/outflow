@@ -2,7 +2,7 @@ import { raw } from 'hono/html'
 import type { Child } from 'hono/jsx'
 import { hasRole } from '../core/access'
 import type { User, Visibility } from '../types'
-import { THEME_INIT_JS, THEME_TOGGLE_JS, baseCss } from './styles'
+import { POWERED_BY, THEME_INIT_JS, THEME_TOGGLE_JS, baseCss } from './styles'
 
 export interface LayoutProps {
   title: string
@@ -73,6 +73,7 @@ export function Layout(props: LayoutProps) {
           </nav>
         </header>
         {props.children}
+        <footer class="site-footer" dangerouslySetInnerHTML={{ __html: POWERED_BY }} />
         <script dangerouslySetInnerHTML={{ __html: TIME_SCRIPT }} />
         <script dangerouslySetInnerHTML={{ __html: `document.getElementById('theme-toggle').onclick=${THEME_TOGGLE_JS}` }} />
         {props.user && (

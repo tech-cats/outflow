@@ -50,6 +50,9 @@ ${DARK_VARS}}
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 body { background: var(--bg); color: var(--fg); font: 15px/1.6 var(--font); -webkit-font-smoothing: antialiased; }
+/* 页面内容不足一屏时页脚贴底：阅读页是 body 的直接子元素，SPA 包在 #root 里 */
+body, #root { display: flex; flex-direction: column; min-height: 100vh; }
+#root { flex: 1 0 auto; min-height: 0; }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 button, input, select, textarea { font: inherit; color: inherit; }
@@ -82,11 +85,11 @@ button.link { background: none; border: 0; padding: 0; cursor: pointer; color: v
 .badge.protected { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, transparent); }
 .badge.draft { color: var(--fg-muted); border-style: dashed; }
 
-.layout { display: grid; grid-template-columns: 270px minmax(0, 1fr); min-height: calc(100vh - 52px); }
-.sidebar { border-right: 1px solid var(--border); background: var(--bg-soft); padding: 16px 10px; position: sticky; top: 52px; height: calc(100vh - 52px); overflow-y: auto; }
+.layout { flex: 1 0 auto; display: grid; grid-template-columns: 270px minmax(0, 1fr); }
+.sidebar { border-right: 1px solid var(--border); background: var(--bg-soft); padding: 16px 10px; position: sticky; top: 52px; max-height: calc(100vh - 52px); overflow-y: auto; }
 .sidebar h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--fg-muted); margin: 4px 10px 8px; display: flex; align-items: center; justify-content: space-between; }
 .main { padding: 32px 48px 96px; min-width: 0; }
-.container { max-width: 900px; margin: 0 auto; padding: 32px 20px 96px; }
+.container { width: 100%; max-width: 900px; margin: 0 auto; padding: 32px 20px 96px; }
 
 .tree, .tree ul { list-style: none; margin: 0; padding: 0; }
 .tree ul { padding-left: 14px; }
@@ -131,15 +134,33 @@ button.link { background: none; border: 0; padding: 0; cursor: pointer; color: v
 .notice { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 999px; box-shadow: var(--shadow); font-size: 14px; z-index: 50; }
 .notice a { color: inherit; text-decoration: underline; margin-left: 8px; }
 
+.site-footer { margin-top: auto; padding: 20px 16px 28px; text-align: center; font-size: 12px; color: var(--fg-muted); border-top: 1px solid var(--border); }
+.site-footer a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+
+.discussion { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--border); }
+.discussion h2 { font-size: 18px; margin: 0 0 12px; }
+.thread { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.thread .comment + .comment { margin: 10px 0 0 16px; padding-left: 12px; border-left: 2px solid var(--border); }
+.comment-head { display: flex; align-items: baseline; gap: 8px; font-size: 13px; color: var(--fg-muted); }
+.comment-head strong { color: var(--fg); font-weight: 600; }
+.comment-del { margin-left: auto; font-size: 12px; color: var(--fg-muted) !important; }
+.comment-body { margin-top: 2px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+.comment-form { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.comment-form textarea { resize: vertical; font: inherit; font-size: 14px; }
+.thread .comment-form { margin-left: 16px; }
+
 @media (max-width: 860px) {
   .layout { grid-template-columns: 1fr; }
-  .sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--border); }
+  .sidebar { position: static; height: auto; max-height: none; border-right: 0; border-bottom: 1px solid var(--border); }
   .main { padding: 24px 16px 80px; }
   .topbar { padding: 0 12px; gap: 10px; }
   .topbar .search { max-width: none; }
   .doc-title { font-size: 26px; }
 }
 `
+
+/** 站点名可自定义，页脚保留项目出处 */
+export const POWERED_BY = 'Powered by <a href="https://github.com/tech-cats/outflow" target="_blank" rel="noopener">Outflow</a>'
 
 /** 放在 <head> 最前面：渲染前应用用户选择的主题，避免闪烁 */
 export const THEME_INIT_JS = `try{var t=localStorage.getItem('outflow-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}`

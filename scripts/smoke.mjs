@@ -180,6 +180,35 @@ check('锁定后编辑不能修改', (await as(dave, `/api/docs/${pub}`, { metho
 check('锁定后不能新建子文档', (await as(dave, '/api/docs', { body: { collectionId: col, parentId: pub } })).status === 403)
 check('锁定后管理员仍可修改', (await call(`/api/docs/${pub}`, { method: 'PATCH', cookie: alice, body: { title: '公开文档' } })).status === 200)
 
+// ---- 评论 ----
+const cm = (u, docId, body) => as(u, `/api/docs/${docId}/comments`, { body })
+check('匿名不能读取评论', (await call(`/api/docs/${pub}/comments`)).status === 401)
+check('不可读文档的评论不可见', (await as(bob, `/api/docs/${draft}/comments`)).status === 404)
+r = await cm(bob, pub, { body: '成员的讨论' })
+check('成员可以发表讨论', r.status === 200)
+const disc = r.json?.id
+check('空评论被拒绝', (await cm(bob, pub, { body: '  ' })).status === 400)
+r = await cm(carol, pub, { body: '回复', parentId: disc })
+check('可以回复', r.status === 200)
+const reply = r.json?.id
+const anchor = JSON.stringify({ from: 'AQIDBA==', to: 'BQYHCA==' })
+r = await cm(bob, pub, { body: '这里有错字', anchor, quote: '公开' })
+check('成员可以添加行内批注', r.status === 200)
+const note = r.json?.id
+check('非法锚点被拒绝', (await cm(bob, pub, { body: 'x', anchor: '{"from":"<>"}' })).status === 400)
+r = await as(bob, `/api/docs/${pub}/comments`)
+check('评论列表包含讨论、回复与批注', r.json?.comments?.length === 3 && r.json.comments.find((x) => x.id === reply)?.parentId === disc)
+check('贡献者不能解决他人在他人文档上的批注', (await as(carol, `/api/comments/${note}`, { method: 'PATCH', body: { resolved: true } })).status === 403)
+check('发起人可以解决批注', (await as(bob, `/api/comments/${note}`, { method: 'PATCH', body: { resolved: true } })).status === 200)
+check('不能单独解决回复', (await as(carol, `/api/comments/${reply}`, { method: 'PATCH', body: { resolved: true } })).status === 400)
+check('不能删除他人评论', (await as(carol, `/api/comments/${disc}`, { method: 'DELETE' })).status === 403)
+r = await as(bob, `/d/${pub}`)
+check('阅读页对登录用户展示讨论', r.text.includes('成员的讨论') && r.text.includes('id="discussion"'))
+check('阅读页对匿名用户不展示讨论', !(await call(`/d/${pub}`)).text.includes('成员的讨论'))
+check('编辑可以删除他人讨论（连同回复）', (await as(dave, `/api/comments/${disc}`, { method: 'DELETE' })).status === 200 &&
+  (await as(bob, `/api/docs/${pub}/comments`)).json.comments.length === 1)
+check('页脚包含 Powered by Outflow', (await call('/')).text.includes('github.com/tech-cats/outflow'))
+
 // ---- 登录：渐进式验证码 ----
 let flags = []
 for (let i = 0; i < 4; i++) {

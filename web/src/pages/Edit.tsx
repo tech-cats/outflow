@@ -10,6 +10,18 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { WebsocketProvider } from 'y-websocket'
 import * as Y from 'yjs'
 import { ApiError, VIS_HINT, VIS_LABEL, api, createDoc, formatTime, hasRole, type DocMeta, type User, type Visibility } from '../api'
+import {
+  CommentAnchors,
+  Discussion,
+  NoteButton,
+  NotesPanel,
+  makeAnchor,
+  useAnchorSync,
+  useComments,
+  useSelectionRange,
+  type CommentsApi,
+  type PendingNote,
+} from '../components/Comments'
 import { DocTree } from '../components/DocTree'
 import { Toolbar } from '../components/Toolbar'
 import { Topbar } from '../components/Topbar'
@@ -190,17 +202,45 @@ function DocEditor(props: {
   }, [doc.id])
 
   if (!collab) return null
+  return <DocBody {...props} collab={collab} status={status} peers={peers} />
+}
+
+function DocBody(props: Parameters<typeof DocEditor>[0] & {
+  collab: { ydoc: Y.Doc; provider: WebsocketProvider }
+  status: string
+  peers: { name: string; color: string }[]
+}) {
+  const { detail, user, collab } = props
+  const doc = detail.doc
+  const comments = useComments(doc.id, collab.provider)
+  const [notesOpen, setNotesOpen] = useState(() => new URLSearchParams(location.search).has('comments'))
+  const openCount = comments.data?.comments.filter((c) => c.anchor && !c.parentId && !c.resolved).length ?? 0
+
+  // 批注面板与历史面板都在右侧，同时只显示一个
+  const setPanel = (p: 'none' | 'history' | 'settings') => {
+    if (p === 'history') setNotesOpen(false)
+    props.setPanel(p)
+  }
+  const openNotes = (open: boolean) => {
+    if (open && props.panel === 'history') props.setPanel('none')
+    setNotesOpen(open)
+  }
+
   return (
     <>
-      <DocHeader {...props} status={status} peers={peers} />
+      <DocHeader {...props} setPanel={setPanel} notes={{ count: openCount, open: notesOpen, toggle: () => openNotes(!notesOpen) }} />
       <CollabEditor
         ydoc={collab.ydoc}
         provider={collab.provider}
         user={user}
         docId={doc.id}
         editable={detail.canEdit}
+        comments={comments}
+        notesOpen={notesOpen}
+        setNotesOpen={openNotes}
       />
       {props.panel === 'history' && <HistoryPanel docId={doc.id} canEdit={detail.canEdit} onClose={() => props.setPanel('none')} />}
+      <Discussion docId={doc.id} me={user} comments={comments} />
     </>
   )
 }
@@ -214,6 +254,7 @@ function DocHeader(props: {
   onTitleSaved(): void
   status: string
   peers: { name: string; color: string }[]
+  notes: { count: number; open: boolean; toggle(): void }
 }) {
   const { detail, user } = props
   const doc = detail.doc
@@ -302,6 +343,9 @@ function DocHeader(props: {
           <a className="btn btn-sm" href={`/d/${doc.id}`}>
             查看页面
           </a>
+          <button className={`btn btn-sm${props.notes.open ? ' on' : ''}`} onClick={props.notes.toggle} title="选中正文文字即可添加批注">
+            批注{props.notes.count > 0 && ` · ${props.notes.count}`}
+          </button>
           <button className="btn btn-sm" onClick={() => props.setPanel(props.panel === 'history' ? 'none' : 'history')}>
             历史
           </button>
@@ -369,14 +413,28 @@ function CollabEditor({
   user,
   docId,
   editable,
+  comments,
+  notesOpen,
+  setNotesOpen,
 }: {
   ydoc: Y.Doc
   provider: WebsocketProvider
   user: User
   docId: string
   editable: boolean
+  comments: CommentsApi
+  notesOpen: boolean
+  setNotesOpen(open: boolean): void
 }) {
   const editorRef = useRef<Editor | null>(null)
+  const [active, setActive] = useState<string | null>(null)
+  const [pending, setPending] = useState<PendingNote | null>(null)
+  // 编辑器扩展只创建一次，通过 ref 拿到最新的回调
+  const activateRef = useRef<(id: string) => void>(() => {})
+  activateRef.current = (id) => {
+    setActive(id)
+    setNotesOpen(true)
+  }
   const insertFiles = (files: File[], pos?: number) => {
     const images = files.filter((f) => f.type.startsWith('image/'))
     if (!images.length) return false
@@ -403,6 +461,7 @@ function CollabEditor({
         Placeholder.configure({ placeholder: '开始写作…（支持 Markdown 快捷输入，如 # 标题、- 列表、``` 代码块）' }),
         Collaboration.configure({ document: ydoc }),
         CollaborationCaret.configure({ provider, user: { name: user.name, color: colorFor(user.id) } }),
+        CommentAnchors.configure({ onActivate: (id) => activateRef.current(id) }),
       ],
       editorProps: {
         attributes: { class: 'prose editor' },
@@ -418,12 +477,41 @@ function CollabEditor({
     [ydoc, provider],
   )
   editorRef.current = editor
+  useAnchorSync(editor, comments.data, pending, active)
+  const sel = useSelectionRange(editor)
 
   if (!editor) return null
+  const startNote = () => {
+    if (!sel) return
+    const anchor = makeAnchor(editor.state, sel.from, sel.to)
+    if (!anchor) return
+    setPending({ anchor, quote: editor.state.doc.textBetween(sel.from, sel.to, ' ').slice(0, 500) })
+    setActive(null)
+    setNotesOpen(true)
+    window.getSelection()?.removeAllRanges()
+  }
   return (
     <>
       {editable && <Toolbar editor={editor} onUpload={(f) => uploadImage(docId, f)} />}
       <EditorContent editor={editor} />
+      {sel && !pending && <NoteButton top={sel.top} left={sel.left} onClick={startNote} />}
+      {notesOpen && (
+        <NotesPanel
+          editor={editor}
+          docId={docId}
+          me={user}
+          comments={comments}
+          pending={pending}
+          onPendingDone={() => setPending(null)}
+          active={active}
+          setActive={setActive}
+          onClose={() => {
+            setNotesOpen(false)
+            setPending(null)
+            setActive(null)
+          }}
+        />
+      )}
     </>
   )
 }

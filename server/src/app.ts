@@ -6,6 +6,7 @@ import { HTTPException } from 'hono/http-exception'
 import { SESSION_COOKIE, getSessionUser } from './core/auth'
 import admin from './routes/admin'
 import auth from './routes/auth'
+import comments from './routes/comments'
 import docs from './routes/docs'
 import pages from './routes/pages'
 import { uploadApi, uploadFiles } from './routes/uploads'
@@ -54,6 +55,7 @@ export function createApp(opts: {
 
   app.route('/api', auth)
   app.route('/api', docs)
+  app.route('/api', comments)
   app.route('/api', uploadApi)
   app.route('/api/admin', admin)
   app.route('/', uploadFiles)
