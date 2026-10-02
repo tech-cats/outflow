@@ -9,10 +9,12 @@ RUN corepack enable
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY server/package.json server/
 COPY web/package.json web/
-RUN pnpm config set registry $NPM_REGISTRY && pnpm install --frozen-lockfile --filter web
+RUN pnpm config set registry $NPM_REGISTRY && pnpm install --frozen-lockfile --filter web --ignore-scripts
 COPY web web
-COPY server/src/views/styles.ts server/src/views/styles.ts
-RUN pnpm --filter web build
+COPY server server
+COPY plugins plugins
+COPY scripts/plugins.mjs scripts/
+RUN pnpm build
 
 FROM node:24-bookworm-slim
 ARG NPM_REGISTRY
@@ -22,9 +24,11 @@ RUN corepack enable
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY server/package.json server/
 COPY web/package.json web/
-RUN pnpm config set registry $NPM_REGISTRY && pnpm install --frozen-lockfile --prod --filter server \
+RUN pnpm config set registry $NPM_REGISTRY && pnpm install --frozen-lockfile --prod --filter server --ignore-scripts \
   && rm -rf /root/.cache /root/.local/share/pnpm
 COPY server server
+COPY plugins plugins
+COPY --from=web /app/server/src/plugins.gen.ts server/src/plugins.gen.ts
 COPY --from=web /app/web/dist web/dist
 ENV NODE_ENV=production DATA_DIR=/data PORT=8787
 VOLUME /data

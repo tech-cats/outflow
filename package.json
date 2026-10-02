@@ -3,15 +3,19 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "pnpm -r --parallel dev",
-    "build": "pnpm --filter web build",
+    "postinstall": "node scripts/plugins.mjs",
+    "plugins": "node scripts/plugins.mjs",
+    "dev": "node scripts/plugins.mjs && pnpm -r --parallel dev",
+    "build": "node scripts/plugins.mjs && pnpm --filter web build",
     "dev:cf": "pnpm build && pnpm --filter server dev:cf",
     "start": "pnpm --filter server start",
     "setup:cf": "node scripts/setup-cf.mjs",
     "deploy:cf": "pnpm build && pnpm --filter server deploy:cf",
-    "typecheck": "pnpm -r typecheck",
+    "typecheck": "node scripts/plugins.mjs && pnpm -r typecheck",
     "smoke": "node scripts/smoke.mjs"
   },
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "packageManager": "pnpm@11.13.0"
 }

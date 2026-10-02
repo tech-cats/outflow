@@ -24,6 +24,7 @@ import {
   type PendingNote,
 } from '../components/Comments'
 import { DocTree } from '../components/DocTree'
+import { docPanels } from '../plugins'
 import { Toolbar } from '../components/Toolbar'
 import { Topbar } from '../components/Topbar'
 import { useSession } from '../session'
@@ -241,6 +242,9 @@ function DocBody(props: Parameters<typeof DocEditor>[0] & {
         setNotesOpen={openNotes}
       />
       {props.panel === 'history' && <HistoryPanel docId={doc.id} canEdit={detail.canEdit} onClose={() => props.setPanel('none')} />}
+      {docPanels.map(({ id, Panel }) => (
+        <Panel key={id} docId={doc.id} canEdit={detail.canEdit} user={user} />
+      ))}
       <Discussion docId={doc.id} me={user} comments={comments} />
     </>
   )

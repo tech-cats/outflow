@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, hasRole } from '../api'
+import { pluginNav } from '../plugins'
 import { useSession } from '../session'
 import { toggleTheme } from '../theme'
 
@@ -22,6 +23,11 @@ export function Topbar({ children }: { children?: React.ReactNode }) {
         <button className="theme-toggle" title="切换深色/浅色" aria-label="切换深色/浅色" onClick={toggleTheme}>
           ◐
         </button>
+        {pluginNav.map((n) => (
+          <a key={n.href} href={n.href}>
+            {n.label}
+          </a>
+        ))}
         {user ? (
           <>
             {hasRole(user, 'contributor') && (

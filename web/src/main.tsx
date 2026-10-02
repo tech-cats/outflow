@@ -1,10 +1,11 @@
-import { RouterProvider, createRootRoute, createRoute, createRouter, lazyRouteComponent, Outlet } from '@tanstack/react-router'
+import { RouterProvider, createRootRoute, createRoute, createRouter, lazyRouteComponent, Outlet, useRouterState } from '@tanstack/react-router'
 import { createRoot } from 'react-dom/client'
 import { POWERED_BY, baseCss } from '../../server/src/views/styles'
 import './app.css'
 import { AdminPage } from './pages/Admin'
 import { NewPage } from './pages/New'
 import { NotificationsPage } from './pages/Notifications'
+import { pluginPages } from './plugins'
 import { SessionProvider } from './session'
 
 // 与服务端阅读页共用同一份基础样式
@@ -13,12 +14,16 @@ style.textContent = baseCss
 document.head.prepend(style)
 
 const rootRoute = createRootRoute({
-  component: () => (
-    <SessionProvider>
-      <Outlet />
-      <footer className="site-footer" dangerouslySetInnerHTML={{ __html: POWERED_BY }} />
-    </SessionProvider>
-  ),
+  component: () => {
+    // 插件的全屏页面（如地图）占满视口，不显示页脚
+    const fullscreen = useRouterState({ select: (s) => s.matches.some((m) => fullscreenPaths.has(m.fullPath)) })
+    return (
+      <SessionProvider>
+        <Outlet />
+        {!fullscreen && <footer className="site-footer" dangerouslySetInnerHTML={{ __html: POWERED_BY }} />}
+      </SessionProvider>
+    )
+  },
   notFoundComponent: () => (
     <div className="container">
       <div className="card empty">
@@ -51,7 +56,14 @@ const routes = [
   editRoute,
 ]
 
-const router = createRouter({ routeTree: rootRoute.addChildren(routes) })
+// route.id 要等路由树构建后才有值，这里按路径记录全屏页面
+const fullscreenPaths = new Set(pluginPages.filter((p) => p.fullscreen).map((p) => p.path))
+const pluginRoutes = pluginPages.map((page) => {
+  const Page = page.component
+  return createRoute({ getParentRoute: () => rootRoute, path: page.path, component: () => <Page /> })
+})
+
+const router = createRouter({ routeTree: rootRoute.addChildren([...routes, ...pluginRoutes]) })
 
 declare module '@tanstack/react-router' {
   interface Register {

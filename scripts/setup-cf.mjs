@@ -68,7 +68,7 @@ step('执行数据库迁移')
 execSync('npx wrangler d1 migrations apply DB --remote', { cwd: serverDir, stdio: 'inherit', env: { ...process.env, CI: '1' } })
 
 step('构建前端')
-execSync('pnpm --filter web build', { cwd: root, stdio: 'inherit' })
+execSync('pnpm build', { cwd: root, stdio: 'inherit' })
 
 step('部署 Worker')
 execSync('npx wrangler deploy', { cwd: serverDir, stdio: 'inherit' })

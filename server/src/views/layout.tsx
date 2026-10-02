@@ -1,6 +1,7 @@
 import { raw } from 'hono/html'
 import type { Child } from 'hono/jsx'
 import { hasRole } from '../core/access'
+import { pluginNav } from '../plugins/host'
 import type { User, Visibility } from '../types'
 import { POWERED_BY, THEME_INIT_JS, THEME_TOGGLE_JS, baseCss } from './styles'
 
@@ -49,6 +50,9 @@ export function Layout(props: LayoutProps) {
             <button class="theme-toggle" id="theme-toggle" title="切换深色/浅色" aria-label="切换深色/浅色">
               ◐
             </button>
+            {pluginNav.map((n) => (
+              <a href={n.href}>{n.label}</a>
+            ))}
             {props.user ? (
               <>
                 {hasRole(props.user, 'contributor') && (

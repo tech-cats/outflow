@@ -42,6 +42,8 @@ docker compose up -d --build
 - 业务逻辑放在 `server/src/core`，平台差异只放在 `server/src/adapters/{cf,node}.ts`
 - 新增数据表时，在 `server/migrations/` 新建 `000N_xxx.sql`。D1 和 Node 共用这些迁移文件，不要修改已发布的迁移
 - 所有读取文档的入口都必须经过 `core/access.ts` 的 `loadChain` 与 `chainReadable`，以保证子文档不会比父文档更开放
+- 学校相关的功能做成插件（`plugins/<name>`，约定见 `plugins/README.md`），不要写进核心。插件只能通过 `@outflow/sdk/server`（仅类型）和 `@outflow/sdk/web` 使用宿主能力；新增宿主能力时同时更新 `server/src/plugins/sdk.ts` 或 `web/src/sdk.ts`
+- 冒烟测试不依赖任何插件，装不装插件都必须通过
 - 检查：`pnpm typecheck`，`pnpm build`
 - 冒烟测试（需要全新的数据目录）：
   ```bash

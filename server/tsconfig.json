@@ -11,7 +11,8 @@
     "skipLibCheck": true,
     "noEmit": true,
     "isolatedModules": true,
-    "verbatimModuleSyntax": true
+    "verbatimModuleSyntax": true,
+    "paths": { "@outflow/sdk/server": ["./src/plugins/sdk.ts"] }
   },
   "include": ["src"]
 }

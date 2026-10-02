@@ -9,6 +9,7 @@ import auth from './routes/auth'
 import comments from './routes/comments'
 import notifications from './routes/notifications'
 import docs from './routes/docs'
+import { mountPlugins } from './plugins/host'
 import pages from './routes/pages'
 import { uploadApi, uploadFiles } from './routes/uploads'
 import type { AppEnv, Platform } from './types'
@@ -60,6 +61,7 @@ export function createApp(opts: {
   app.route('/api', notifications)
   app.route('/api', uploadApi)
   app.route('/api/admin', admin)
+  mountPlugins(app)
   app.route('/', uploadFiles)
   app.route('/', pages)
 

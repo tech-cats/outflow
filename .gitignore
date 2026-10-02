@@ -6,3 +6,10 @@ data
 .wrangler
 *.log
 .DS_Store
+# 插件：各自独立维护，克隆或软链接到 plugins/<name>
+plugins/*
+!plugins/README.md
+# 插件注册表（scripts/plugins.mjs 生成）
+server/src/plugins.gen.ts
+web/src/plugins.gen.ts
+web/plugins.gen.json

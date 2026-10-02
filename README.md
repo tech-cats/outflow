@@ -21,6 +21,7 @@
 | 评论 | 行内批注（选中正文文字即可批注，基于 Yjs 相对位置锚定，并发编辑后仍能定位原文；可回复、解决）与文末讨论；支持 @ 提及与链接自动识别；仅登录用户可见，所有角色均可评论，编辑及以上可删除他人评论 |
 | 通知 | 被 @ 提及、讨论有新回复、自己的文档被评论、批注被解决时发送站内通知（不发邮件，邮件只用于验证码）。收件人必须能读到该文档 |
 | 角色 | `成员`（默认，阅读登录可见的文档、评论）/ `贡献者`（新建文档，编辑、发布、移动、删除自己的文档）/ `编辑`（审稿：可修改、移动、删除他人的文档，新建集合）/ `管理员`。草稿只有作者和管理员能看到；只有管理员可以连同子文档一起删除 |
+| 插件 | 学校相关的功能以插件形式接入（如校园地图），插件可以提供页面、顶栏入口、接口、文档页扩展区域和静态资源，数据存在宿主提供的键值存储中。见 [plugins/README.md](plugins/README.md) |
 | 管理 | 白名单规则、用户角色与停用、集合管理、文档锁定（锁定后仅管理员可编辑） |
 
 第一个注册的用户自动成为管理员。
@@ -40,6 +41,10 @@ pnpm dev
 
 - Node 服务，端口 8787：API、阅读页、WebSocket
 - Vite，端口 5173：前端 SPA，动态路由代理到 8787
+
+## 插件
+
+Outflow 本身不包含任何学校的数据。把插件仓库克隆到 `plugins/<name>`，重新执行 `pnpm install`（或 `pnpm plugins`）后构建、部署即可启用；删除目录即可卸载。插件的编写约定见 [plugins/README.md](plugins/README.md)。
 
 ## 部署到 Cloudflare Workers
 
@@ -113,13 +118,16 @@ server/
     entry/node.ts      Node 入口（HTTP + WebSocket + 静态资源）
     adapters/          db / storage / mailer / ratelimit / cache 的 cf 与 node 两套实现
     collab/room.ts     与运行时无关的 Yjs 房间（兼容 y-websocket 协议）
-    core/              权限、认证、验证码、搜索
+    core/              权限、认证、评论、通知、验证码、搜索
+    plugins/           插件宿主与服务端插件 SDK
     routes/            API 与服务端渲染页面
     views/             Hono JSX 视图与共享样式
 web/                   Vite + React SPA
 scripts/setup-cf.mjs   Cloudflare 一键部署
 scripts/geoip-download.mjs  下载 DB-IP Lite IP 库（自托管时的地区识别）
 scripts/smoke.mjs      API 冒烟测试（白名单、可见性继承、CSRF、渐进式验证码等）
+scripts/plugins.mjs    扫描 plugins/ 生成插件注册表（install、dev、build、typecheck 前自动执行）
+plugins/               插件目录（各插件独立维护，克隆到这里即可启用）
 ```
 
 ## 已知限制（MVP）
@@ -127,7 +135,7 @@ scripts/smoke.mjs      API 冒烟测试（白名单、可见性继承、CSRF、�
 - 搜索用的是 `LIKE` 子串匹配，适合几千篇文档的规模；更大规模可以换成 FTS5 trigram
 - Cloudflare 上的页面缓存只清除当前数据中心的副本（TTL 60 秒），其他数据中心最多延迟 60 秒更新
 - 文档标题不参与实时协同（保存时以最后一次修改为准），正文是实时协同的
-- 暂不支持评论、OAuth/SSO、多工作区、API Token
+- 暂不支持 OAuth/SSO、多工作区、API Token
 
 ## 致谢
 

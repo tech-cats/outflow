@@ -140,6 +140,11 @@ button.link { background: none; border: 0; padding: 0; cursor: pointer; color: v
 .mention { color: var(--accent); font-weight: 500; }
 .comment-body a { text-decoration: underline; text-underline-offset: 2px; word-break: break-all; }
 .comment:target { background: var(--accent-soft); border-radius: 6px; }
+.plugin-section { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--border); }
+.plugin-title { margin: 0 0 10px; font-size: 16px; }
+.chip-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip-list .badge { padding: 3px 10px; font-size: 13px; color: var(--fg); }
+.chip-list .badge:hover { text-decoration: none; border-color: var(--accent); }
 .site-footer { margin-top: auto; padding: 20px 16px 28px; text-align: center; font-size: 12px; color: var(--fg-muted); border-top: 1px solid var(--border); }
 .site-footer a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 

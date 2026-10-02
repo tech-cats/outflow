@@ -8,6 +8,7 @@ import { mentionNames } from '../core/notify'
 import { searchDocs } from '../core/search'
 import { escapeHtml, jsonToHtml } from '../lib/prosemirror'
 import type { AppEnv, PMNode } from '../types'
+import { renderDocSections } from '../plugins/host'
 import { Discussion } from '../views/comments'
 import { Layout, Time, Tree, VisBadge } from '../views/layout'
 import { rateLimit } from './util'
@@ -200,6 +201,7 @@ pages.get('/d/:id', rateLimit('read'), (c) =>
       user ? listComments(p.db, doc.id) : [],
     ])
     const names = await mentionNames(p, comments.map((x) => x.body))
+    const pluginHtml = await renderDocSections(c, { id: doc.id, title: doc.title })
     const openNotes = comments.filter((x) => x.anchor && !x.parentId && !x.resolved).length
     const readableTree = filterReadable(user, tree)
     const titles = new Map(tree.map((d) => [d.id, d.title]))
@@ -259,6 +261,7 @@ pages.get('/d/:id', rateLimit('read'), (c) =>
                 </span>
               </div>
               <div class="prose" dangerouslySetInnerHTML={{ __html: html || '<p class="muted">（空文档）</p>' }} />
+              {pluginHtml && <div dangerouslySetInnerHTML={{ __html: pluginHtml }} />}
               {user && <Discussion docId={doc.id} comments={comments} names={names} userId={user.id} canModerate={hasRole(user, 'editor')} />}
             </article>
           </main>
