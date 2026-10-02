@@ -1,11 +1,10 @@
 import { mentionedIds, plainText } from '../lib/comment-text'
-import { escapeHtml } from '../lib/prosemirror'
 import { newId } from '../lib/crypto'
 import type { Platform, Role, User } from '../types'
 import { chainReadable, loadChain } from './access'
 
 /**
- * 通知模块。业务代码只上报事件，收件人计算、权限过滤、站内信写入与邮件发送都在这里完成。
+ * 通知模块（仅站内通知，不发邮件）。业务代码只上报事件，收件人计算、权限过滤与写入都在这里完成。
  *
  * 规则（同一事件对同一个人只发一条，按优先级取最高的一种）：
  *  mention —— 评论里 @ 了你
@@ -22,8 +21,6 @@ export type NotifyEvent =
   | { type: 'comment.resolved'; actor: User; docId: string; commentId: string }
 
 const PRIORITY: NotifyType[] = ['mention', 'reply', 'comment', 'resolve']
-/** 同一文档短时间内已有未读通知时不再发邮件，避免刷屏 */
-const EMAIL_QUIET_MS = 10 * 60 * 1000
 const MAX_MENTIONS = 20
 
 interface CommentRow {
@@ -40,7 +37,7 @@ export function commentLink(docId: string, root: { id: string; anchor: string | 
   return root.anchor ? `/edit/${docId}?comments=1&note=${root.id}` : `/d/${docId}#c-${root.id}`
 }
 
-export async function notify(p: Platform, event: NotifyEvent, baseUrl: string): Promise<void> {
+export async function notify(p: Platform, event: NotifyEvent): Promise<void> {
   const db = p.db
   const comment = await db.get<CommentRow>('SELECT id, doc_id, parent_id, author_id, body, anchor FROM comments WHERE id = ?', event.commentId)
   if (!comment) return
@@ -73,8 +70,8 @@ export async function notify(p: Platform, event: NotifyEvent, baseUrl: string): 
 
   // 过滤：存在、未停用、能读到文档
   const ids = [...targets.keys()]
-  const users = await db.all<{ id: string; email: string; name: string; role: Role; disabled: number; notify_email: number }>(
-    `SELECT id, email, name, role, disabled, notify_email FROM users WHERE id IN (${ids.map(() => '?').join(',')})`,
+  const users = await db.all<{ id: string; email: string; name: string; role: Role; disabled: number }>(
+    `SELECT id, email, name, role, disabled FROM users WHERE id IN (${ids.map(() => '?').join(',')})`,
     ...ids,
   )
   const chain = await loadChain(db, event.docId)
@@ -86,23 +83,12 @@ export async function notify(p: Platform, event: NotifyEvent, baseUrl: string): 
   const link = commentLink(event.docId, root)
   const now = Date.now()
 
-  const mailTo: { user: (typeof recipients)[number]; type: NotifyType }[] = []
   for (const u of recipients) {
-    const type = targets.get(u.id)!
-    if (p.config.mail.driver !== 'none' && u.notify_email) {
-      const recent = await db.get<{ n: number }>(
-        'SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND doc_id = ? AND read_at IS NULL AND created_at > ?',
-        u.id,
-        event.docId,
-        now - EMAIL_QUIET_MS,
-      )
-      if (!recent?.n) mailTo.push({ user: u, type })
-    }
     await db.run(
       `INSERT INTO notifications (id, user_id, type, actor_id, doc_id, comment_id, excerpt, link, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       newId(),
       u.id,
-      type,
+      targets.get(u.id)!,
       event.actor.id,
       event.docId,
       comment.id,
@@ -111,37 +97,6 @@ export async function notify(p: Platform, event: NotifyEvent, baseUrl: string): 
       now,
     )
   }
-
-  // 邮件在响应返回后发送，失败只记录日志
-  if (mailTo.length) {
-    const title = doc.title || '无标题'
-    p.waitUntil(
-      Promise.all(
-        mailTo.map(({ user, type }) =>
-          p.mailer
-            .send({ to: user.email, ...notifyMail(p.config.appName, event.actor.name, type, title, excerpt, baseUrl + link) })
-            .catch((err) => console.error('notify mail failed', user.id, err)),
-        ),
-      ),
-    )
-  }
-}
-
-export const NOTIFY_TEXT: Record<NotifyType, string> = {
-  mention: '提到了你',
-  reply: '回复了讨论',
-  comment: '评论了你的文档',
-  resolve: '解决了你的批注',
-}
-
-function notifyMail(appName: string, actor: string, type: NotifyType, title: string, excerpt: string, url: string) {
-  const subject = `【${appName}】${actor} ${NOTIFY_TEXT[type]}：${title}`
-  const text = `${actor} 在「${title}」${NOTIFY_TEXT[type]}${excerpt ? `：\n\n${excerpt}` : ''}\n\n查看：${url}\n\n不想再收到邮件？可以在网站的通知页面关闭邮件提醒。`
-  const html =
-    `<p>${escapeHtml(actor)} 在「${escapeHtml(title)}」${NOTIFY_TEXT[type]}</p>` +
-    (excerpt ? `<blockquote style="margin:12px 0;padding:4px 12px;border-left:3px solid #ddd;color:#555">${escapeHtml(excerpt)}</blockquote>` : '') +
-    `<p><a href="${escapeHtml(url)}">查看</a></p><p style="color:#999;font-size:12px">不想再收到邮件？可以在网站的通知页面关闭邮件提醒。</p>`
-  return { subject, text, html }
 }
 
 /** 评论正文中被提及用户的名字 */

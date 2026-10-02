@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { chainReadable, loadChain } from '../core/access'
 import type { AppEnv } from '../types'
-import { body, fail, requireUser } from './util'
+import { body, requireUser } from './util'
 
 const notifications = new Hono<AppEnv>()
 // 注意不要用 notifications.use('*')：挂载到 /api 后会作用于所有 /api 路由
@@ -37,7 +37,6 @@ notifications.get('/notifications', requireUser, async (c) => {
   // 文档权限可能在通知产生后收紧，展示前再检查一次
   const readable = new Map<string, boolean>()
   for (const id of new Set(rows.map((r) => r.doc_id))) readable.set(id, chainReadable(user, await loadChain(p.db, id)))
-  const me = await p.db.get<{ notify_email: number }>('SELECT notify_email FROM users WHERE id = ?', user.id)
   c.header('Cache-Control', 'no-store')
   return c.json({
     items: rows
@@ -52,7 +51,6 @@ notifications.get('/notifications', requireUser, async (c) => {
         read: !!r.read_at,
         createdAt: r.created_at,
       })),
-    email: { enabled: !!me?.notify_email, available: p.config.mail.driver !== 'none' },
   })
 })
 
@@ -73,13 +71,6 @@ notifications.post('/notifications/read', requireUser, async (c) => {
   } else {
     await db.run('UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL', now, c.var.user!.id)
   }
-  return c.json({ ok: true })
-})
-
-notifications.put('/notifications/settings', requireUser, async (c) => {
-  const b = await body(c)
-  if (typeof b.email !== 'boolean') return fail(c, 400, '参数错误')
-  await c.var.p.db.run('UPDATE users SET notify_email = ? WHERE id = ?', b.email ? 1 : 0, c.var.user!.id)
   return c.json({ ok: true })
 })
 

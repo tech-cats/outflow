@@ -16,7 +16,6 @@ interface Item {
 
 interface Data {
   items: Item[]
-  email: { enabled: boolean; available: boolean }
 }
 
 const TEXT: Record<Item['type'], string> = {
@@ -52,15 +51,6 @@ export function NotificationsPage() {
     location.href = n.link
   }
 
-  const setEmail = async (enabled: boolean) => {
-    try {
-      await api('/notifications/settings', { method: 'PUT', body: { email: enabled } })
-      setData((d) => d && { ...d, email: { ...d.email, enabled } })
-    } catch (e) {
-      alert((e as Error).message)
-    }
-  }
-
   const unread = data?.items.filter((n) => !n.read).length ?? 0
 
   return (
@@ -82,13 +72,6 @@ export function NotificationsPage() {
           )}
         </div>
         {error && <div className="form-error">{error}</div>}
-        {data && (
-          <label className="small muted notify-setting">
-            <input type="checkbox" checked={data.email.enabled} disabled={!data.email.available} onChange={(e) => setEmail(e.target.checked)} />
-            同时通过邮件提醒
-            {!data.email.available && '（站点未配置邮件服务）'}
-          </label>
-        )}
         {data?.items.length === 0 && <div className="card empty">暂无通知</div>}
         <ul className="list notify-list">
           {data?.items.map((n) => (

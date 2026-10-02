@@ -68,7 +68,7 @@ comments.post('/docs/:id/comments', requireUser, rateLimit('write'), async (c) =
     quote,
     Date.now(),
   )
-  await notify(p, { type: 'comment.created', actor: c.var.user!, docId: r.doc.id, commentId: id }, origin(c))
+  await notify(p, { type: 'comment.created', actor: c.var.user!, docId: r.doc.id, commentId: id })
   return c.json({ id })
 })
 
@@ -84,10 +84,6 @@ comments.get('/docs/:id/mentionable', requireUser, rateLimit('read'), async (c) 
   const users = rows.filter((u) => u.id !== c.var.user!.id && chainReadable(u, r.chain)).slice(0, 8)
   return c.json({ users: users.map((u) => ({ id: u.id, name: u.name })) })
 })
-
-function origin(c: Parameters<typeof loadDoc>[0]) {
-  return c.var.p.config.appUrl || new URL(c.req.url).origin
-}
 
 async function loadComment(c: Parameters<typeof loadDoc>[0], id: string) {
   const row = await c.var.p.db.get<{ id: string; doc_id: string; parent_id: string | null; author_id: string }>(
@@ -113,7 +109,7 @@ comments.patch('/comments/:id', requireUser, rateLimit('write'), async (c) => {
     b.resolved ? c.var.user!.id : null,
     r.row.id,
   )
-  if (b.resolved) await notify(c.var.p, { type: 'comment.resolved', actor: c.var.user!, docId: r.row.doc_id, commentId: r.row.id }, origin(c))
+  if (b.resolved) await notify(c.var.p, { type: 'comment.resolved', actor: c.var.user!, docId: r.row.doc_id, commentId: r.row.id })
   return c.json({ ok: true })
 })
 

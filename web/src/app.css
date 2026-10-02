@@ -134,7 +134,6 @@ altcha-widget[display="invisible"] { position: absolute; width: 0; height: 0; ov
 .mention-list button.on, .mention-list button:hover { background: var(--accent-soft); }
 
 /* ---------- 通知 ---------- */
-.notify-setting { display: flex; align-items: center; gap: 6px; margin: 4px 0 12px; }
 .notify-list li { padding: 0; }
 .notify-list li.unread { background: color-mix(in srgb, var(--accent-soft) 60%, transparent); }
 .notify-item { display: flex; flex-direction: column; gap: 3px; width: 100%; padding: 12px 10px; border: 0; background: none; text-align: left; cursor: pointer; color: var(--fg); font-size: 14px; }

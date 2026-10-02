@@ -212,7 +212,6 @@ check('页脚包含 Powered by Outflow', (await call('/')).text.includes('github
 // ---- 通知 ----
 const inbox = async (u) => (await as(u, '/api/notifications')).json
 const unread = async (u) => (await as(u, '/api/notifications/unread')).json.count
-const mentionMails = () => [...readFileSync(LOG, 'utf8').matchAll(/to=dave@pku\.edu\.cn\n\s+subject: [^\n]*提到了你/g)].length
 check('匿名不能读取通知', (await call('/api/notifications')).status === 401)
 let n = await inbox({ cookie: alice })
 check('文档作者收到新批注通知', n.items.some((x) => x.type === 'comment' && x.link.includes(`note=${note}`)))
@@ -227,10 +226,9 @@ await sleep(200)
 n = await inbox(dave)
 check('被提及者收到 mention 通知', n.items[0]?.type === 'mention' && n.items[0].excerpt.includes('@dave') && n.items[0].link === `/d/${pub}#c-${ask}`)
 check('文档作者同时收到 comment 通知', (await inbox({ cookie: alice })).items.length === aliceBefore + 1)
-check('提及发送邮件', mentionMails() === 1)
 await cm(carol, pub, { body: `<@${dave.id}> 再看一下` })
 await sleep(200)
-check('同一文档 10 分钟内有未读时不重复发邮件', (await unread(dave)) === 2 && mentionMails() === 1)
+check('每次提及都产生站内通知', (await unread(dave)) === 2)
 
 await cm(dave, pub, { body: `收到 <@${carol.id}>`, parentId: ask })
 n = await inbox(carol)
@@ -254,8 +252,7 @@ await as(carol, '/api/notifications/read', { body: {} })
 check('全部标为已读', (await unread(carol)) === 0)
 await as(dave, '/api/notifications/read', { body: { ids: [(await inbox(dave)).items[0].id] } })
 check('按 id 标为已读', (await inbox(dave)).items.filter((x) => !x.read).length === (await unread(dave)) && (await inbox(dave)).items[0].read)
-await as(carol, '/api/notifications/settings', { method: 'PUT', body: { email: false } })
-check('关闭邮件提醒', (await inbox(carol)).email.enabled === false)
+check('通知不发送邮件', !/subject: [^\n]*(提到了你|回复了讨论|评论了你的文档|解决了你的批注)/.test(readFileSync(LOG, 'utf8')))
 const daveCount = (await inbox(dave)).items.length
 await as(carol, `/api/comments/${ask}`, { method: 'DELETE' })
 check('删除评论后相关通知一并删除', (await inbox(dave)).items.length < daveCount)
