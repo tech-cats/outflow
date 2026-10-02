@@ -1,5 +1,6 @@
 export type CaptchaProvider = 'altcha' | 'turnstile' | 'hcaptcha' | 'none'
-export type MailDriver = 'smtp' | 'resend' | 'console'
+/** none：未配置任何邮件服务，发送验证码会直接报错，避免“看似成功却收不到邮件” */
+export type MailDriver = 'smtp' | 'resend' | 'console' | 'none'
 
 export interface Config {
   appName: string
@@ -47,7 +48,9 @@ export function loadConfig(env: Record<string, unknown>): Config {
       secret: s('CAPTCHA_SECRET'),
     },
     mail: {
-      driver: s('MAIL_DRIVER', 'console') as MailDriver,
+      // 未显式指定时自动选择；什么都没配置则为 none，绝不静默回退到 console
+      driver: (s('MAIL_DRIVER') ||
+        (s('SMTP_HOST') ? 'smtp' : s('RESEND_API_KEY') ? 'resend' : 'none')) as MailDriver,
       from: s('MAIL_FROM', 'Outflow <noreply@example.com>'),
       smtp: {
         host: s('SMTP_HOST'),

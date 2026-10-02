@@ -1,7 +1,7 @@
 import { WorkerMailer } from 'worker-mailer'
 import { loadConfig, type Config } from '../config'
 import type { DB, Mailer, PMNode, Platform, RateBucket } from '../types'
-import { consoleMailer, parseAddress, resendMailer } from './mail-common'
+import { parseAddress, pickMailer } from './mail-common'
 
 export interface CfEnv {
   DB: D1Database
@@ -74,7 +74,7 @@ export function cfPlatform(env: CfEnv, ctx?: { waitUntil(p: Promise<unknown>): v
       },
     },
     mailer:
-      config.mail.driver === 'smtp' ? smtpMailer(config) : config.mail.driver === 'resend' ? resendMailer(config) : consoleMailer(),
+      pickMailer(config, smtpMailer),
     rateLimit: {
       async limit(bucket, key) {
         const binding = rl[bucket]

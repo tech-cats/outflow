@@ -56,8 +56,9 @@ CAPTCHA_PROVIDER = "altcha"
 # 登录验证：always（每次都要）| after_failures（连续失败 3 次后才要）
 LOGIN_CAPTCHA = "always"
 CAPTCHA_SITE_KEY = ""
-# smtp | resend | console
-MAIL_DRIVER = "console"
+# 留空自动选择（配了 SMTP_HOST 用 smtp，配了 RESEND_API_KEY 用 resend，都没有则无法发送验证码）
+# console 仅把邮件打印到日志，切勿用于生产
+MAIL_DRIVER = ""
 MAIL_FROM = "Outflow <noreply@example.com>"
 SMTP_HOST = ""
 SMTP_PORT = "465"

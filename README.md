@@ -30,7 +30,7 @@ cp .env.example .env
 pnpm dev
 ```
 
-打开 http://localhost:5173 。开发模式下邮件不会真的发出，验证码直接打印在终端里（`MAIL_DRIVER=console`）。
+打开 http://localhost:5173 。开发时在 `.env` 里显式设置 `MAIL_DRIVER=console`，邮件就不会真的发出，验证码直接打印在终端里，注册页也会给出提示。生产环境请配置 SMTP；什么都没配置时，发送验证码会直接报错，而不是假装发送成功。
 
 `pnpm dev` 会同时启动：
 
@@ -89,7 +89,7 @@ docker compose up -d --build
 | `REGISTRATION_ENABLED` | `false` 表示关闭注册 |
 | `CAPTCHA_PROVIDER` | `altcha`（默认）、`turnstile`、`hcaptcha` 或 `none`。后两种第三方服务需要配置 `CAPTCHA_SITE_KEY` 和 `CAPTCHA_SECRET` |
 | `LOGIN_CAPTCHA` | `always`（默认，每次登录都要人机验证）或 `after_failures`（连续失败 3 次后才要求） |
-| `MAIL_DRIVER` | `smtp`、`resend` 或 `console` |
+| `MAIL_DRIVER` | 留空自动选择（有 `SMTP_HOST` 用 smtp，有 `RESEND_API_KEY` 用 resend，都没有则无法发验证码）；`console` 只打印到日志，仅限开发 |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS` | SMTP 配置。在 Workers 上必须用 465 或 587 端口 |
 | `APP_URL` | 对外访问地址，用于 sitemap 和 canonical；以 `https` 开头时会自动给 Cookie 加 `Secure` |
 

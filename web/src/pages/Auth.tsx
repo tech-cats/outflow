@@ -173,6 +173,9 @@ function CodeFlow({ purpose }: { purpose: 'register' | 'reset' }) {
       <form onSubmit={sendCode} className="form">
         <Field label="邮箱" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
         {purpose === 'register' && <p className="muted small" style={{ margin: 0 }}>仅允许白名单内的邮箱（如学校邮箱）注册。</p>}
+        {config && !config.mail.configured && (
+          <div className="form-error">邮件服务尚未配置，暂时无法发送验证码，请联系管理员。</div>
+        )}
         {config && <Captcha key={captchaKey} config={config.captcha} onToken={setCaptcha} />}
         {error && <div className="form-error">{error}</div>}
         <button className="btn btn-primary" disabled={busy || cooldown > 0 || (needsCaptcha && !captcha)}>
@@ -185,6 +188,9 @@ function CodeFlow({ purpose }: { purpose: 'register' | 'reset' }) {
   return (
     <form onSubmit={finish} className="form">
       {info && <div className="form-info">{info}</div>}
+      {config?.mail.devConsole && (
+        <div className="form-warn">开发模式（MAIL_DRIVER=console）：邮件不会真正发出，验证码打印在服务端日志中。</div>
+      )}
       <Field
         label="邮箱验证码"
         inputMode="numeric"

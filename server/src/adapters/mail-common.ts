@@ -27,3 +27,20 @@ export function resendMailer(cfg: Config): Mailer {
     },
   }
 }
+
+export function pickMailer(cfg: Config, smtp: (cfg: Config) => Mailer): Mailer {
+  switch (cfg.mail.driver) {
+    case 'smtp':
+      return smtp(cfg)
+    case 'resend':
+      return resendMailer(cfg)
+    case 'console':
+      return consoleMailer()
+    default:
+      return {
+        async send() {
+          throw new Error('mail not configured')
+        },
+      }
+  }
+}

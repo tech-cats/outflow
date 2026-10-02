@@ -7,7 +7,7 @@ import { Room } from '../collab/room'
 import { loadDocState, saveDocState } from '../core/docs'
 import { replaceDocContent } from '../lib/prosemirror'
 import type { DB, Mailer, Platform } from '../types'
-import { consoleMailer, resendMailer } from './mail-common'
+import { pickMailer } from './mail-common'
 import { memoryRateLimiter } from './memory-ratelimit'
 
 const norm = (params: unknown[]) =>
@@ -109,7 +109,7 @@ export function nodePlatform(opts: { db: DB; dataDir: string; env: Record<string
       },
     },
     mailer:
-      config.mail.driver === 'smtp' ? smtpMailer(config) : config.mail.driver === 'resend' ? resendMailer(config) : consoleMailer(),
+      pickMailer(config, smtpMailer),
     rateLimit: memoryRateLimiter(),
     // 自部署时 SQLite 就在本地，无需页面缓存
     cache: {

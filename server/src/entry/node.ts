@@ -21,6 +21,12 @@ const { db, raw } = openSqlite(join(dataDir, 'outflow.db'))
 await migrate(raw, join(here, '../../migrations'))
 const p = nodePlatform({ db, dataDir, env: process.env })
 
+if (p.config.mail.driver === 'console') {
+  console.warn('[警告] MAIL_DRIVER=console：邮件不会真正发出，验证码会打印在日志中，仅限开发使用')
+} else if (p.config.mail.driver === 'none') {
+  console.warn('[警告] 未配置邮件服务（SMTP_HOST / RESEND_API_KEY），注册与找回密码将不可用')
+}
+
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',

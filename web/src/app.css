@@ -9,6 +9,7 @@
 .form { display: flex; flex-direction: column; gap: 14px; }
 .field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--fg-soft); }
 .form-error { color: var(--danger); font-size: 13px; background: color-mix(in srgb, var(--danger) 8%, transparent); padding: 8px 10px; border-radius: 6px; }
+.form-warn { color: var(--warn); font-size: 13px; background: color-mix(in srgb, var(--warn) 10%, transparent); padding: 8px 10px; border-radius: 6px; }
 .form-info { color: var(--ok); font-size: 13px; background: color-mix(in srgb, var(--ok) 8%, transparent); padding: 8px 10px; border-radius: 6px; }
 altcha-widget { --altcha-max-width: 100%; }
 altcha-widget[display="invisible"] { position: absolute; width: 0; height: 0; overflow: hidden; }

@@ -54,6 +54,7 @@ auth.post('/auth/send-code', rateLimit('auth'), async (c) => {
   const purpose = b.purpose as CodePurpose
   if (!email) return fail(c, 400, '邮箱格式不正确')
   if (purpose !== 'register' && purpose !== 'reset') return fail(c, 400, '参数错误')
+  if (p.config.mail.driver === 'none') return fail(c, 503, '邮件服务未配置，暂时无法发送验证码，请联系管理员')
   if (!(await verifyCaptcha(p, b.captcha, ip(c)))) return fail(c, 400, '人机验证失败，请重试', { captcha: true })
 
   const exists = await p.db.get('SELECT 1 AS x FROM users WHERE email = ?', email)
@@ -175,8 +176,9 @@ auth.post('/auth/logout', async (c) => {
 auth.get('/me', (c) => c.json({ user: c.var.user }))
 
 auth.get('/config', (c) => {
-  const { appName, registrationEnabled, loginCaptcha, captcha } = c.var.p.config
+  const { appName, registrationEnabled, loginCaptcha, captcha, mail } = c.var.p.config
   return c.json({
+    mail: { configured: mail.driver !== 'none', devConsole: mail.driver === 'console' },
     appName,
     registrationEnabled,
     loginCaptcha,
