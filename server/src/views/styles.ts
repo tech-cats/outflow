@@ -1,4 +1,23 @@
 /** 服务端阅读页与前端 SPA 共用的基础样式 */
+const DARK_VARS = `
+    --bg: #17181a;
+    --bg-soft: #1e1f22;
+    --bg-hover: #2a2b2f;
+    --fg: #e6e6e3;
+    --fg-soft: #b1b3b8;
+    --fg-muted: #7d8087;
+    --border: #2f3034;
+    --accent: #5b8def;
+    --accent-fg: #ffffff;
+    --accent-soft: #1e2a44;
+    --danger: #f47067;
+    --ok: #57ab5a;
+    --warn: #c69026;
+    --code-bg: #232428;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.3);
+    color-scheme: dark;
+`
+
 export const baseCss = `
 :root {
   --bg: #ffffff;
@@ -21,26 +40,13 @@ export const baseCss = `
   --mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
   color-scheme: light;
 }
+/* 深色：未手动选择时跟随系统；data-theme 为用户手动选择 */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #17181a;
-    --bg-soft: #1e1f22;
-    --bg-hover: #2a2b2f;
-    --fg: #e6e6e3;
-    --fg-soft: #b1b3b8;
-    --fg-muted: #7d8087;
-    --border: #2f3034;
-    --accent: #5b8def;
-    --accent-fg: #ffffff;
-    --accent-soft: #1e2a44;
-    --danger: #f47067;
-    --ok: #57ab5a;
-    --warn: #c69026;
-    --code-bg: #232428;
-    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.3);
-    color-scheme: dark;
-  }
+  :root:not([data-theme="light"]) {
+${DARK_VARS}  }
 }
+:root[data-theme="dark"] {
+${DARK_VARS}}
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 body { background: var(--bg); color: var(--fg); font: 15px/1.6 var(--font); -webkit-font-smoothing: antialiased; }
@@ -57,6 +63,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .topbar .nav { display: flex; align-items: center; gap: 12px; font-size: 14px; }
 .topbar .nav a, .topbar .nav button.link { color: var(--fg-soft); }
 .topbar .nav a.btn-primary { color: var(--accent-fg); }
+.theme-toggle { border: 0; background: none; cursor: pointer; width: 30px; height: 30px; border-radius: 8px; color: var(--fg-soft); font-size: 16px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; }
+.theme-toggle:hover { background: var(--bg-hover); color: var(--fg); }
 
 .input { width: 100%; padding: 7px 11px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); outline: none; transition: border-color .15s, box-shadow .15s; }
 .input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
@@ -132,3 +140,9 @@ button.link { background: none; border: 0; padding: 0; cursor: pointer; color: v
   .doc-title { font-size: 26px; }
 }
 `
+
+/** 放在 <head> 最前面：渲染前应用用户选择的主题，避免闪烁 */
+export const THEME_INIT_JS = `try{var t=localStorage.getItem('outflow-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}`
+
+/** 在浅色/深色之间切换（以当前实际生效的主题为准），并记住选择；SPA 端见 web/src/theme.ts */
+export const THEME_TOGGLE_JS = `function(){var r=document.documentElement,c=r.dataset.theme||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'),n=c==='dark'?'light':'dark';r.dataset.theme=n;try{localStorage.setItem('outflow-theme',n)}catch(e){}}`

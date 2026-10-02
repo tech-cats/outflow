@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { ApiError, api } from '../api'
 import { Captcha } from '../components/Captcha'
 import { useSession } from '../session'
+import { toggleTheme } from '../theme'
 
 function safeNext(): string {
   const n = new URLSearchParams(location.search).get('next')
@@ -21,6 +22,9 @@ function AuthCard({ title, children, footer }: { title: string; children: React.
         {children}
       </div>
       {footer && <div className="auth-footer">{footer}</div>}
+      <button className="theme-toggle" style={{ marginTop: 12 }} title="切换深色/浅色" aria-label="切换深色/浅色" onClick={toggleTheme}>
+        ◐
+      </button>
     </div>
   )
 }

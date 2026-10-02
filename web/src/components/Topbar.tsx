@@ -1,5 +1,6 @@
 import { api } from '../api'
 import { useSession } from '../session'
+import { toggleTheme } from '../theme'
 
 /** 与服务端阅读页保持一致的顶栏；跳到阅读页一律用整页导航 */
 export function Topbar({ children }: { children?: React.ReactNode }) {
@@ -16,6 +17,9 @@ export function Topbar({ children }: { children?: React.ReactNode }) {
       <div className="spacer" />
       {children}
       <nav className="nav">
+        <button className="theme-toggle" title="切换深色/浅色" aria-label="切换深色/浅色" onClick={toggleTheme}>
+          ◐
+        </button>
         {user ? (
           <>
             <a className="btn btn-primary btn-sm" href="/new">

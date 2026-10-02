@@ -1,7 +1,7 @@
 import { raw } from 'hono/html'
 import type { Child } from 'hono/jsx'
 import type { User, Visibility } from '../types'
-import { baseCss } from './styles'
+import { THEME_INIT_JS, THEME_TOGGLE_JS, baseCss } from './styles'
 
 export interface LayoutProps {
   title: string
@@ -22,6 +22,7 @@ export function Layout(props: LayoutProps) {
     <html lang="zh-CN">
       <head>
         <meta charset="utf-8" />
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_JS }} />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>{fullTitle}</title>
         {props.description && <meta name="description" content={props.description} />}
@@ -44,6 +45,9 @@ export function Layout(props: LayoutProps) {
           </form>
           <div class="spacer" />
           <nav class="nav">
+            <button class="theme-toggle" id="theme-toggle" title="切换深色/浅色" aria-label="切换深色/浅色">
+              ◐
+            </button>
             {props.user ? (
               <>
                 <a class="btn btn-primary btn-sm" href="/new">
@@ -67,6 +71,7 @@ export function Layout(props: LayoutProps) {
         </header>
         {props.children}
         <script dangerouslySetInnerHTML={{ __html: TIME_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: `document.getElementById('theme-toggle').onclick=${THEME_TOGGLE_JS}` }} />
         {props.user && (
           <script
             dangerouslySetInnerHTML={{
