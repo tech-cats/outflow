@@ -7,6 +7,7 @@ import {
   SESSION_TTL_MS,
   clearFailures,
   codeMail,
+  checkEmailCode,
   consumeEmailCode,
   createSession,
   deleteSession,
@@ -81,6 +82,21 @@ auth.post('/auth/send-code', rateLimit('auth'), async (c) => {
     await p.db.run('DELETE FROM email_codes WHERE email = ? AND created_at >= ?', email, Date.now() - 60_000)
     return fail(c, 502, '邮件发送失败，请稍后再试')
   }
+  return c.json({ ok: true })
+})
+
+/** 分步表单第 2 步：只校验验证码，不作废；最终提交时再次校验并作废 */
+auth.post('/auth/check-code', rateLimit('auth'), async (c) => {
+  const p = c.var.p
+  const b = await body(c)
+  const email = normalizeEmail(b.email)
+  const purpose = b.purpose as CodePurpose
+  if (!email) return fail(c, 400, '邮箱格式不正确')
+  if (purpose !== 'register' && purpose !== 'reset') return fail(c, 400, '参数错误')
+  const geo = await geoBlock(c, purpose === 'register' ? 'register' : 'login')
+  if (geo) return geo
+  const err = await checkEmailCode(p, email, purpose, String(b.code ?? ''))
+  if (err) return fail(c, 400, err)
   return c.json({ ok: true })
 })
 

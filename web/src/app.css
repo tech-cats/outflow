@@ -6,6 +6,15 @@
 .auth-card { width: 100%; max-width: 380px; padding: 28px; box-shadow: var(--shadow); }
 .auth-card h1 { font-size: 20px; margin: 0 0 18px; }
 .auth-footer { margin-top: 16px; font-size: 14px; color: var(--fg-muted); }
+.stepper { display: flex; list-style: none; padding: 0; margin: 0 0 22px; gap: 6px; counter-reset: step; }
+.step { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; position: relative; font-size: 12px; color: var(--fg-muted); text-align: center; }
+.step:not(:last-child)::after { content: ''; position: absolute; top: 12px; left: calc(50% + 18px); right: calc(-50% + 18px); height: 2px; background: var(--border); }
+.step.done:not(:last-child)::after { background: var(--accent); }
+.step-dot { width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; border: 2px solid var(--border); background: var(--bg); color: var(--fg-muted); }
+.step.current .step-dot { border-color: var(--accent); color: var(--accent); }
+.step.current { color: var(--fg); font-weight: 600; }
+.step.done .step-dot { border-color: var(--accent); background: var(--accent); color: var(--accent-fg); }
+button.link:disabled { color: var(--fg-muted); cursor: not-allowed; }
 .form { display: flex; flex-direction: column; gap: 14px; }
 .field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--fg-soft); }
 .form-error { color: var(--danger); font-size: 13px; background: color-mix(in srgb, var(--danger) 8%, transparent); padding: 8px 10px; border-radius: 6px; }

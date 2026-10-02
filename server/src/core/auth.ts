@@ -88,11 +88,21 @@ export async function issueEmailCode(p: Platform, email: string, purpose: CodePu
   return { ok: true, code }
 }
 
-export async function consumeEmailCode(
+/** 校验并作废验证码（注册 / 重置密码的最终提交） */
+export function consumeEmailCode(p: Platform, email: string, purpose: CodePurpose, code: string) {
+  return checkEmailCode(p, email, purpose, code, true)
+}
+
+/**
+ * 校验验证码，返回错误信息或 null。consume=false 时只校验不作废（分步表单的中间步骤），
+ * 错误尝试同样计入次数上限，因此不会放宽暴力猜测的限制。
+ */
+export async function checkEmailCode(
   p: Platform,
   email: string,
   purpose: CodePurpose,
   code: string,
+  consume = false,
 ): Promise<string | null> {
   const row = await p.db.get<{ id: string; code_hash: string; attempts: number; expires_at: number }>(
     'SELECT id, code_hash, attempts, expires_at FROM email_codes WHERE email = ? AND purpose = ? ORDER BY created_at DESC LIMIT 1',
@@ -106,7 +116,7 @@ export async function consumeEmailCode(
     await p.db.run('UPDATE email_codes SET attempts = attempts + 1 WHERE id = ?', row.id)
     return '验证码错误'
   }
-  await p.db.run('UPDATE email_codes SET expires_at = 0 WHERE id = ?', row.id)
+  if (consume) await p.db.run('UPDATE email_codes SET expires_at = 0 WHERE id = ?', row.id)
   return null
 }
 
