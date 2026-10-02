@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { VIS_LABEL, api, formatTime, type Collection, type Role, type Visibility } from '../api'
+import { VIS_LABEL, api, formatTime, type Collection, type GeoScope, type Role, type Visibility } from '../api'
 import { Topbar } from '../components/Topbar'
 import { useSession } from '../session'
 
@@ -14,7 +14,7 @@ interface AdminUser {
 
 export function AdminPage() {
   const { user, loading } = useSession()
-  const [tab, setTab] = useState<'rules' | 'users' | 'collections'>('rules')
+  const [tab, setTab] = useState<'rules' | 'geo' | 'users' | 'collections'>('rules')
 
   if (loading) return <Topbar />
   if (!user || user.role !== 'admin') {
@@ -36,6 +36,7 @@ export function AdminPage() {
           {(
             [
               ['rules', '注册白名单'],
+              ['geo', '地域限制'],
               ['users', '用户'],
               ['collections', '集合'],
             ] as const
@@ -48,6 +49,7 @@ export function AdminPage() {
         {tab === 'rules' && <Rules />}
         {tab === 'users' && <Users selfId={user.id} />}
         {tab === 'collections' && <Collections />}
+        {tab === 'geo' && <Geo />}
       </main>
     </>
   )
@@ -208,5 +210,82 @@ function Collections() {
       ))}
       {list?.length === 0 && <li className="muted">暂无集合</li>}
     </ul>
+  )
+}
+
+interface GeoInfo {
+  scopes: Record<GeoScope, string>
+  rules: Record<GeoScope, { countries: string[]; source: 'env' | 'admin' }>
+  defaults: Record<GeoScope, string[]>
+  unknown: 'allow' | 'deny'
+  yourCountry: string | null
+}
+
+function Geo() {
+  const [info, setInfo] = useState<GeoInfo | null>(null)
+  const load = () => api<GeoInfo>('/admin/geo').then(setInfo)
+  useEffect(() => void load(), [])
+  if (!info) return null
+  return (
+    <section>
+      <p className="muted small">
+        按请求来源的国家/地区限制接口（ISO 两位代码，如 <code>CN</code>、<code>HK</code>、<code>MO</code>、<code>TW</code>），留空表示不限制。
+        你当前的地区：<strong>{info.yourCountry ?? '未知'}</strong>；无法识别地区时：
+        <strong>{info.unknown === 'allow' ? '放行' : '拒绝'}</strong>（环境变量 GEO_UNKNOWN）。
+      </p>
+      <ul className="list">
+        {(Object.keys(info.scopes) as GeoScope[]).map((s) => (
+          <GeoRow key={s} scope={s} label={info.scopes[s]} rule={info.rules[s]} defaults={info.defaults[s]} onSaved={load} />
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+function GeoRow(props: {
+  scope: GeoScope
+  label: string
+  rule: { countries: string[]; source: 'env' | 'admin' }
+  defaults: string[]
+  onSaved(): void
+}) {
+  const [value, setValue] = useState(props.rule.countries.join(', '))
+  const [error, setError] = useState('')
+  useEffect(() => setValue(props.rule.countries.join(', ')), [props.rule])
+  const save = async (countries: string | null) => {
+    setError('')
+    try {
+      await api(`/admin/geo/${props.scope}`, { method: 'PUT', body: { countries } })
+      props.onSaved()
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+  return (
+    <li>
+      <div className="row-between">
+        <strong>{props.label}</strong>
+        <span className="muted small">
+          {props.rule.source === 'admin' ? '已在后台修改' : '使用环境变量默认值'}
+          {props.rule.countries.length ? '' : ' · 当前不限制'}
+        </span>
+      </div>
+      <form
+        className="row-form"
+        onSubmit={(e) => {
+          e.preventDefault()
+          void save(value)
+        }}
+      >
+        <input className="input" placeholder="留空 = 不限制，例如 CN, HK" value={value} onChange={(e) => setValue(e.target.value)} />
+        <button className="btn btn-primary">保存</button>
+        {props.rule.source === 'admin' && (
+          <button type="button" className="btn" title={`默认：${props.defaults.join(', ') || '不限制'}`} onClick={() => save(null)}>
+            恢复默认
+          </button>
+        )}
+      </form>
+      {error && <div className="form-error">{error}</div>}
+    </li>
   )
 }

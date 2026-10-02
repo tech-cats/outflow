@@ -23,6 +23,7 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
 }
 
 export type Role = 'admin' | 'member'
+export type GeoScope = 'register' | 'login'
 export type Visibility = 'public' | 'protected' | 'draft'
 
 export interface User {
@@ -36,6 +37,7 @@ export interface AppConfig {
   appName: string
   registrationEnabled: boolean
   loginCaptcha: 'always' | 'after_failures'
+  geo: { country: string | null; blocked: GeoScope[] }
   mail: { configured: boolean; devConsole: boolean }
   captcha: { provider: 'altcha' | 'turnstile' | 'hcaptcha' | 'none'; siteKey: string }
 }

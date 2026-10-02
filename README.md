@@ -14,6 +14,7 @@
 | 可见性 | `公开`（默认，所有人与搜索引擎可读）/ `仅登录可见` / `草稿`（仅作者与管理员）。子文档不会比父文档更开放：只要任何一级祖先不可读，子文档就不可读 |
 | 协作 | 多人实时编辑，显示协作者光标和在线头像；匿名读者在阅读页会看到「文档已更新」提示 |
 | 注册 | 必须通过邮箱验证码注册，并且只接受**白名单**内的邮箱，其余一律拒绝。白名单在发信前检查，不在名单内的邮箱不会消耗邮件额度 |
+| 地域白名单 | 按请求来源国家/地区限制接口，默认只允许中国内地（CN）和香港（HK）注册；按范围配置（注册、登录与找回密码），可在管理后台随时调整。Cloudflare 上自动识别地区，自托管时可用上游代理传来的请求头或本地 IP 库（DB-IP Lite） |
 | 防滥用 | 人机验证可切换：ALTCHA（自托管 PoW，默认；隐式运行，打开页面即在后台自动完成，只在顶部弹出提示）、Turnstile、hCaptcha；按 IP 和用户限流；登录默认每次都要人机验证（`LOGIN_CAPTCHA=after_failures` 可改为失败 3 次后才要求），失败 10 次锁定 15 分钟；验证码有冷却时间、尝试次数和每日上限 |
 | 内容 | 集合 → 文档树（拖拽排序或嵌套）、版本历史（每 10 分钟一个快照，可回滚）、图片粘贴或拖入上传、导出 Markdown、搜索（对中文友好的子串匹配） |
 | SEO | 公开文档由服务端渲染，并提供 sitemap.xml、canonical 和 og 标签；非公开文档自动 `noindex` |
@@ -76,6 +77,8 @@ docker compose up -d --build
 
 数据保存在 `./data` 目录（SQLite 和上传的图片），备份时复制这个目录即可。如果部署在 Nginx、Caddy 等反向代理之后，需要设置 `TRUST_PROXY=true`，并让代理转发 WebSocket（路径为 `/api/collab/*`）。
 
+使用地域白名单时，先在宿主机执行 `node scripts/geoip-download.mjs` 下载 IP 库（会保存到 `./data/geoip/`），再在 `.env` 中设置 `GEO_MMDB_PATH=/data/geoip/dbip-country-lite.mmdb`；如果前面套了 Cloudflare 代理，也可以改用 `GEO_COUNTRY_HEADER=CF-IPCountry`。
+
 不用 Docker 的话（需要 Node 24+）：`pnpm install && pnpm build && pnpm start`。
 
 ## 配置项
@@ -89,8 +92,12 @@ docker compose up -d --build
 | `REGISTRATION_ENABLED` | `false` 表示关闭注册 |
 | `CAPTCHA_PROVIDER` | `altcha`（默认）、`turnstile`、`hcaptcha` 或 `none`。后两种第三方服务需要配置 `CAPTCHA_SITE_KEY` 和 `CAPTCHA_SECRET` |
 | `LOGIN_CAPTCHA` | `always`（默认，每次登录都要人机验证）或 `after_failures`（连续失败 3 次后才要求） |
+| `GEO_REGISTER_COUNTRIES` / `GEO_LOGIN_COUNTRIES` | 各范围允许的国家/地区代码，如 `CN,HK`；留空表示不限制 |
+| `GEO_UNKNOWN` | 无法识别地区时 `deny`（默认）或 `allow` |
+| `GEO_COUNTRY_HEADER` / `GEO_MMDB_PATH` | 仅自托管：地区来源，二选一。IP 库用 `node scripts/geoip-download.mjs` 下载 |
 | `MAIL_DRIVER` | 留空自动选择（有 `SMTP_HOST` 用 smtp，有 `RESEND_API_KEY` 用 resend，都没有则无法发验证码）；`console` 只打印到日志，仅限开发 |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS` | SMTP 配置。在 Workers 上必须用 465 或 587 端口 |
+| `RATE_LIMIT_AUTH` / `RATE_LIMIT_WRITE` / `RATE_LIMIT_READ` | 自托管时的限流额度（每分钟次数，默认 10 / 120 / 300）；校园网共用出口 IP 时可调高 `RATE_LIMIT_AUTH`。Cloudflare 上改 `wrangler.toml` 的 `[[ratelimits]]` |
 | `APP_URL` | 对外访问地址，用于 sitemap 和 canonical；以 `https` 开头时会自动给 Cookie 加 `Secure` |
 
 ## 目录结构
@@ -108,6 +115,7 @@ server/
     views/             Hono JSX 视图与共享样式
 web/                   Vite + React SPA
 scripts/setup-cf.mjs   Cloudflare 一键部署
+scripts/geoip-download.mjs  下载 DB-IP Lite IP 库（自托管时的地区识别）
 scripts/smoke.mjs      API 冒烟测试（白名单、可见性继承、CSRF、渐进式验证码等）
 ```
 
@@ -117,3 +125,7 @@ scripts/smoke.mjs      API 冒烟测试（白名单、可见性继承、CSRF、�
 - Cloudflare 上的页面缓存只清除当前数据中心的副本（TTL 60 秒），其他数据中心最多延迟 60 秒更新
 - 文档标题不参与实时协同（保存时以最后一次修改为准），正文是实时协同的
 - 暂不支持评论、OAuth/SSO、多工作区、API Token
+
+## 致谢
+
+自托管时的地区识别使用 [DB-IP](https://db-ip.com) 的 IP Geolocation 数据（CC BY 4.0）。

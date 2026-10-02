@@ -116,6 +116,11 @@ export function cfPlatform(env: CfEnv, ctx?: { waitUntil(p: Promise<unknown>): v
         if (!res.ok) throw new Error(`replace failed: ${res.status}`)
       },
     },
+    clientCountry(req) {
+      // Cloudflare 边缘直接给出国家；XX 表示未知，T1 表示 Tor
+      const c = (req as Request & { cf?: { country?: string } }).cf?.country ?? req.headers.get('cf-ipcountry')
+      return c && c !== 'XX' ? c.toUpperCase() : null
+    },
     clientIp(req) {
       return req.headers.get('cf-connecting-ip') ?? 'unknown'
     },

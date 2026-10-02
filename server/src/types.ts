@@ -57,6 +57,8 @@ export interface Platform {
   waitUntil(p: Promise<unknown>): void
   /** 获取客户端 IP；rawEnv 为 Hono 的 c.env（Node 下包含底层 socket） */
   clientIp(req: Request, rawEnv: unknown): string
+  /** 客户端国家/地区代码（ISO 3166-1 alpha-2，大写），无法识别时为 null */
+  clientCountry(req: Request, rawEnv: unknown): string | null
 }
 
 export type Role = 'admin' | 'member'

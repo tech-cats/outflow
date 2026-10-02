@@ -9,8 +9,22 @@ function safeNext(): string {
   return n && n.startsWith('/') && !n.startsWith('//') ? n : '/'
 }
 
-function AuthCard({ title, children, footer }: { title: string; children: React.ReactNode; footer?: React.ReactNode }) {
+const SCOPE_LABEL = { register: '注册', login: '登录' } as const
+
+function AuthCard({
+  title,
+  children,
+  footer,
+  scope,
+}: {
+  title: string
+  children: React.ReactNode
+  footer?: React.ReactNode
+  /** 地域白名单范围：当前地区被拒绝时直接给出提示，不渲染表单 */
+  scope: 'register' | 'login'
+}) {
   const { config } = useSession()
+  const blocked = config?.geo.blocked.includes(scope)
   return (
     <div className="auth-wrap">
       <a className="brand auth-brand" href="/">
@@ -19,7 +33,13 @@ function AuthCard({ title, children, footer }: { title: string; children: React.
       </a>
       <div className="card auth-card">
         <h1>{title}</h1>
-        {children}
+        {blocked ? (
+          <div className="form-error">
+            当前地区（{config?.geo.country ?? '未知'}）暂不开放{SCOPE_LABEL[scope]}。如有疑问请联系管理员。
+          </div>
+        ) : (
+          children
+        )}
       </div>
       {footer && <div className="auth-footer">{footer}</div>}
       <button className="theme-toggle" style={{ marginTop: 12 }} title="切换深色/浅色" aria-label="切换深色/浅色" onClick={toggleTheme}>
@@ -75,6 +95,7 @@ export function LoginPage() {
   return (
     <AuthCard
       title="登录"
+      scope="login"
       footer={
         <>
           还没有账号？<a href="/register">注册</a> · <a href="/reset">忘记密码</a>
@@ -232,7 +253,7 @@ function CodeFlow({ purpose }: { purpose: 'register' | 'reset' }) {
 
 export function RegisterPage() {
   return (
-    <AuthCard title="注册" footer={<>已有账号？<a href="/login">登录</a></>}>
+    <AuthCard title="注册" scope="register" footer={<>已有账号？<a href="/login">登录</a></>}>
       <CodeFlow purpose="register" />
     </AuthCard>
   )
@@ -240,7 +261,7 @@ export function RegisterPage() {
 
 export function ResetPage() {
   return (
-    <AuthCard title="重置密码" footer={<a href="/login">返回登录</a>}>
+    <AuthCard title="重置密码" scope="login" footer={<a href="/login">返回登录</a>}>
       <CodeFlow purpose="reset" />
     </AuthCard>
   )

@@ -12,8 +12,12 @@ import { canEditChain, chainReadable, loadChain } from '../core/access'
 import { SESSION_COOKIE, getSessionUser } from '../core/auth'
 
 const here = import.meta.dirname
-const dataDir = resolve(process.env.DATA_DIR ?? join(here, '../../../data'))
-const webDist = resolve(process.env.WEB_DIST ?? join(here, '../../../web/dist'))
+// .env 中的相对路径一律相对项目根目录解析（pnpm 会在 server/ 下启动进程）
+const root = resolve(here, '../../..')
+const fromRoot = (p: string) => resolve(root, p)
+const dataDir = fromRoot(process.env.DATA_DIR ?? 'data')
+if (process.env.GEO_MMDB_PATH) process.env.GEO_MMDB_PATH = fromRoot(process.env.GEO_MMDB_PATH)
+const webDist = fromRoot(process.env.WEB_DIST ?? 'web/dist')
 const port = Number(process.env.PORT ?? 8787)
 
 mkdirSync(dataDir, { recursive: true })
@@ -25,6 +29,12 @@ if (p.config.mail.driver === 'console') {
   console.warn('[警告] MAIL_DRIVER=console：邮件不会真正发出，验证码会打印在日志中，仅限开发使用')
 } else if (p.config.mail.driver === 'none') {
   console.warn('[警告] 未配置邮件服务（SMTP_HOST / RESEND_API_KEY），注册与找回密码将不可用')
+}
+const geo = p.config.geo
+if ((geo.defaults.register.length || geo.defaults.login.length) && !geo.header && !geo.mmdbPath) {
+  console.warn(
+    `[警告] 已配置地域白名单，但没有地区来源（GEO_COUNTRY_HEADER / GEO_MMDB_PATH），所有请求都将视为“未知地区”并${geo.unknown === 'allow' ? '放行' : '拒绝'}`,
+  )
 }
 
 const MIME: Record<string, string> = {

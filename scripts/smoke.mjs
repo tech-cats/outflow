@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 /**
- * API 冒烟测试（无依赖）。需要服务以 CAPTCHA_PROVIDER=none、MAIL_DRIVER=console 运行，
- * 并把服务日志写入文件以便读取验证码。必须在全新的数据库上运行。
+ * API 冒烟测试（无依赖）。必须在全新的数据库上运行，服务需要以下环境：
+ *   CAPTCHA_PROVIDER=none、MAIL_DRIVER=console（日志写入文件以便读取验证码）、
+ *   GEO_COUNTRY_HEADER=X-Test-Country（用请求头模拟访问地区）、GEO_REGISTER_COUNTRIES=（默认不限制）、
+ *   GEO_UNKNOWN=deny、RATE_LIMIT_AUTH=1000（测试会在一分钟内发出大量认证请求）
  *
- *   DATA_DIR=/tmp/of CAPTCHA_PROVIDER=none PORT=8790 pnpm start > /tmp/of.log 2>&1 &
+ *   DATA_DIR=/tmp/of CAPTCHA_PROVIDER=none MAIL_DRIVER=console GEO_COUNTRY_HEADER=X-Test-Country \
+ *     GEO_REGISTER_COUNTRIES= GEO_UNKNOWN=deny RATE_LIMIT_AUTH=1000 PORT=8790 pnpm start > /tmp/of.log 2>&1 &
  *   BASE=http://localhost:8790 LOG=/tmp/of.log node scripts/smoke.mjs
  */
 import { readFileSync } from 'node:fs'
@@ -57,6 +60,31 @@ check('错误验证码被拒绝', r.status === 400)
 r = await call('/api/auth/register', { body: { email: 'alice@pku.edu.cn', code, name: 'Alice', password: 'password123' } })
 check('注册成功且首个用户为管理员', r.status === 200 && r.json?.user?.role === 'admin')
 const alice = r.cookie
+
+// ---- 地域白名单 ----
+const geoPut = (scope, countries, headers = {}) =>
+  call(`/api/admin/geo/${scope}`, { method: 'PUT', cookie: alice, body: { countries }, headers })
+r = await geoPut('register', 'CN, hk')
+check('管理员设置注册地域白名单', r.status === 200)
+const sendFrom = (cc) =>
+  call('/api/auth/send-code', { body: { email: 'bob@pku.edu.cn', purpose: 'register' }, headers: cc ? { 'X-Test-Country': cc } : {} })
+r = await sendFrom('US')
+check('US 请求注册被拒绝', r.status === 403 && r.json?.geo === true, r.json?.error)
+r = await sendFrom(null)
+check('无法识别地区时默认拒绝', r.status === 403 && r.json?.geo === true)
+r = await sendFrom('HK')
+check('HK 请求通过地域检查', r.status === 200, r.json?.error)
+r = await call('/api/config', { headers: { 'X-Test-Country': 'US' } })
+check('/api/config 提前告知被拒范围', JSON.stringify(r.json?.geo?.blocked) === '["register"]' && r.json?.geo?.country === 'US')
+r = await call('/api/auth/login', { body: { email: 'alice@pku.edu.cn', password: 'password123' }, headers: { 'X-Test-Country': 'US' } })
+check('登录范围未限制时不受影响', r.status === 200)
+r = await geoPut('login', 'CN')
+check('限制登录时阻止管理员把自己锁在外面', r.status === 400, r.json?.error)
+r = await geoPut('login', 'XYZ', { 'X-Test-Country': 'CN' })
+check('非法地区代码被拒绝', r.status === 400)
+r = await geoPut('register', null)
+r = await sendFrom(null)
+check('恢复默认后（不限制）可正常请求', r.status === 429 || r.status === 200, String(r.status))
 
 // ---- 可见性继承 ----
 const col = (await call('/api/collections', { cookie: alice, body: { name: '冒烟测试' } })).json.id

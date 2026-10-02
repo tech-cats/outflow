@@ -1,13 +1,19 @@
 import type { RateBucket, RateLimiter } from '../types'
 
-/** 与 wrangler.toml 中 [[ratelimits]] 保持一致的进程内固定窗口限流 */
-export const RATE_LIMITS: Record<RateBucket, { limit: number; periodMs: number }> = {
-  auth: { limit: 10, periodMs: 60_000 },
-  write: { limit: 120, periodMs: 60_000 },
-  read: { limit: 300, periodMs: 60_000 },
-}
+/** 每分钟次数，默认值与 wrangler.toml 中 [[ratelimits]] 一致 */
+export const DEFAULT_RATE_LIMITS: Record<RateBucket, number> = { auth: 10, write: 120, read: 300 }
 
-export function memoryRateLimiter(): RateLimiter {
+/**
+ * 进程内固定窗口限流。可用 RATE_LIMIT_AUTH / RATE_LIMIT_WRITE / RATE_LIMIT_READ 调整，
+ * 例如校园网大量用户共用出口 IP 时适当调高 RATE_LIMIT_AUTH。
+ */
+export function memoryRateLimiter(env: Record<string, unknown> = {}): RateLimiter {
+  const RATE_LIMITS = Object.fromEntries(
+    (Object.keys(DEFAULT_RATE_LIMITS) as RateBucket[]).map((b) => {
+      const v = Number(env[`RATE_LIMIT_${b.toUpperCase()}`])
+      return [b, { limit: Number.isFinite(v) && v > 0 ? v : DEFAULT_RATE_LIMITS[b], periodMs: 60_000 }]
+    }),
+  ) as Record<RateBucket, { limit: number; periodMs: number }>
   const hits = new Map<string, { count: number; reset: number }>()
   let lastSweep = Date.now()
   return {

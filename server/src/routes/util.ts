@@ -1,5 +1,7 @@
 import type { Context, MiddlewareHandler } from 'hono'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
+import type { GeoScope } from '../config'
+import { GEO_SCOPES, getGeoRules, isAllowed } from '../core/geo'
 import type { AppEnv, RateBucket } from '../types'
 
 export function fail(c: Context, status: ContentfulStatusCode, error: string, extra: Record<string, unknown> = {}) {
@@ -45,4 +47,17 @@ export function str(v: unknown, max = 200): string | null {
   if (typeof v !== 'string') return null
   const s = v.trim()
   return s.length > 0 && s.length <= max ? s : null
+}
+
+export function country(c: Context<AppEnv>): string | null {
+  return c.var.p.clientCountry(c.req.raw, c.env)
+}
+
+/** 地域白名单检查；被拒绝时返回 403 响应，放行时返回 null */
+export async function geoBlock(c: Context<AppEnv>, scope: GeoScope): Promise<Response | null> {
+  const p = c.var.p
+  const rule = (await getGeoRules(p))[scope]
+  const cc = country(c)
+  if (isAllowed(rule, cc, p.config.geo.unknown)) return null
+  return fail(c, 403, `当前地区（${cc ?? '未知'}）暂不开放${GEO_SCOPES[scope]}`, { geo: true, country: cc })
 }

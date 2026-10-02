@@ -45,6 +45,6 @@ docker compose up -d --build
 - 检查：`pnpm typecheck`，`pnpm build`
 - 冒烟测试（需要全新的数据目录）：
   ```bash
-  DATA_DIR=/tmp/of CAPTCHA_PROVIDER=none PORT=8790 pnpm start > /tmp/of.log 2>&1 &
+  DATA_DIR=/tmp/of CAPTCHA_PROVIDER=none MAIL_DRIVER=console GEO_COUNTRY_HEADER=X-Test-Country GEO_REGISTER_COUNTRIES= GEO_UNKNOWN=deny RATE_LIMIT_AUTH=1000 PORT=8790 pnpm start > /tmp/of.log 2>&1 &
   BASE=http://localhost:8790 LOG=/tmp/of.log node scripts/smoke.mjs
   ```

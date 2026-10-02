@@ -1,8 +1,10 @@
 import { Hono } from 'hono'
 import { getEmailRules } from '../core/auth'
+import { parseCountries, type GeoScope } from '../config'
+import { GEO_SCOPES, getGeoRules, isAllowed, setGeoRule } from '../core/geo'
 import { normalizeRule } from '../lib/email-rules'
 import type { AppEnv } from '../types'
-import { body, fail, requireAdmin } from './util'
+import { body, country, fail, requireAdmin } from './util'
 
 const admin = new Hono<AppEnv>()
 admin.use('*', requireAdmin)
@@ -38,6 +40,39 @@ admin.patch('/users/:id', async (c) => {
     await db.run('UPDATE users SET disabled = ? WHERE id = ?', b.disabled ? 1 : 0, id)
     if (b.disabled) await db.run('DELETE FROM sessions WHERE user_id = ?', id)
   }
+  return c.json({ ok: true })
+})
+
+admin.get('/geo', async (c) => {
+  const p = c.var.p
+  return c.json({
+    scopes: GEO_SCOPES,
+    rules: await getGeoRules(p),
+    defaults: p.config.geo.defaults,
+    unknown: p.config.geo.unknown,
+    yourCountry: country(c),
+  })
+})
+
+/** body: { countries: "CN,HK" } 设置；{ countries: null } 恢复环境变量默认值；"" 表示不限制 */
+admin.put('/geo/:scope', async (c) => {
+  const scope = c.req.param('scope') as GeoScope
+  if (!(scope in GEO_SCOPES)) return fail(c, 404, '未知范围')
+  const b = await body(c)
+  if (b.countries === null) {
+    await setGeoRule(c.var.p, scope, null)
+    return c.json({ ok: true })
+  }
+  if (typeof b.countries !== 'string') return fail(c, 400, '参数错误')
+  const list = parseCountries(b.countries)
+  const invalid = b.countries.split(/[,\s]+/).filter((x) => x && !list.includes(x.trim().toUpperCase()))
+  if (invalid.length) return fail(c, 400, `无法识别的地区代码：${invalid.join(', ')}（请使用两位代码，如 CN、HK）`)
+  // 防止管理员把自己锁在外面：限制登录时，必须包含自己当前的地区
+  const cc = country(c)
+  if (scope === 'login' && !isAllowed({ countries: list, source: 'admin' }, cc, c.var.p.config.geo.unknown)) {
+    return fail(c, 400, `你当前的地区（${cc ?? '未知'}）不在列表中，保存后你将无法登录`)
+  }
+  await setGeoRule(c.var.p, scope, list)
   return c.json({ ok: true })
 })
 

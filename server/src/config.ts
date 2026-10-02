@@ -1,6 +1,7 @@
 export type CaptchaProvider = 'altcha' | 'turnstile' | 'hcaptcha' | 'none'
 /** none：未配置任何邮件服务，发送验证码会直接报错，避免“看似成功却收不到邮件” */
 export type MailDriver = 'smtp' | 'resend' | 'console' | 'none'
+export type GeoScope = 'register' | 'login'
 
 export interface Config {
   appName: string
@@ -16,6 +17,16 @@ export interface Config {
     from: string
     smtp: { host: string; port: number; secure: boolean; user: string; pass: string }
     resendApiKey: string
+  }
+  geo: {
+    /** 各范围的国家/地区白名单（ISO 3166-1 alpha-2）；空数组 = 不限制。管理后台可覆盖 */
+    defaults: Record<GeoScope, string[]>
+    /** 无法识别地区时：deny（默认）或 allow */
+    unknown: 'allow' | 'deny'
+    /** 仅 Node：信任的上游国家请求头（如 CF-IPCountry）；只有在代理会覆盖该头时才可设置 */
+    header: string
+    /** 仅 Node：本地 IP 库（MMDB 格式，如 DB-IP Lite / GeoLite2 Country） */
+    mmdbPath: string
   }
   maxUploadBytes: number
   /** 生产环境（https）下 Cookie 加 Secure */
@@ -61,7 +72,21 @@ export function loadConfig(env: Record<string, unknown>): Config {
       },
       resendApiKey: s('RESEND_API_KEY'),
     },
+    geo: {
+      defaults: {
+        register: parseCountries(s('GEO_REGISTER_COUNTRIES')),
+        login: parseCountries(s('GEO_LOGIN_COUNTRIES')),
+      },
+      unknown: s('GEO_UNKNOWN', 'deny') === 'allow' ? 'allow' : 'deny',
+      header: s('GEO_COUNTRY_HEADER'),
+      mmdbPath: s('GEO_MMDB_PATH'),
+    },
     maxUploadBytes: Number(s('MAX_UPLOAD_MB', '10')) * 1024 * 1024,
     secureCookies: appUrl ? appUrl.startsWith('https://') : s('SECURE_COOKIES', 'false') === 'true',
   }
+}
+
+/** "CN, hk" -> ["CN", "HK"]，忽略非法项 */
+export function parseCountries(v: string): string[] {
+  return [...new Set(v.split(/[,\s]+/).map((x) => x.trim().toUpperCase()).filter((x) => /^[A-Z][A-Z0-9]$/.test(x)))]
 }

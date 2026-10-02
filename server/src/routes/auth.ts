@@ -20,7 +20,8 @@ import { createAltchaChallenge, verifyCaptcha } from '../core/captcha'
 import { hashPassword, newId, verifyPassword } from '../lib/crypto'
 import { normalizeEmail } from '../lib/email-rules'
 import type { AppEnv } from '../types'
-import { body, fail, ip, rateLimit, str } from './util'
+import { blockedScopes } from '../core/geo'
+import { body, country, fail, geoBlock, ip, rateLimit, str } from './util'
 
 const auth = new Hono<AppEnv>()
 
@@ -54,6 +55,9 @@ auth.post('/auth/send-code', rateLimit('auth'), async (c) => {
   const purpose = b.purpose as CodePurpose
   if (!email) return fail(c, 400, '邮箱格式不正确')
   if (purpose !== 'register' && purpose !== 'reset') return fail(c, 400, '参数错误')
+  // 地域检查放在人机验证之前：被拒绝的地区不消耗验证码 token
+  const geo = await geoBlock(c, purpose === 'register' ? 'register' : 'login')
+  if (geo) return geo
   if (p.config.mail.driver === 'none') return fail(c, 503, '邮件服务未配置，暂时无法发送验证码，请联系管理员')
   if (!(await verifyCaptcha(p, b.captcha, ip(c)))) return fail(c, 400, '人机验证失败，请重试', { captcha: true })
 
@@ -82,6 +86,8 @@ auth.post('/auth/send-code', rateLimit('auth'), async (c) => {
 
 auth.post('/auth/register', rateLimit('auth'), async (c) => {
   const p = c.var.p
+  const geo = await geoBlock(c, 'register')
+  if (geo) return geo
   const b = await body(c)
   const email = normalizeEmail(b.email)
   const name = str(b.name, 40)
@@ -114,6 +120,8 @@ auth.post('/auth/register', rateLimit('auth'), async (c) => {
 
 auth.post('/auth/login', rateLimit('auth'), async (c) => {
   const p = c.var.p
+  const geo = await geoBlock(c, 'login')
+  if (geo) return geo
   const b = await body(c)
   const email = normalizeEmail(b.email)
   if (!email || typeof b.password !== 'string') return fail(c, 400, '邮箱或密码错误')
@@ -149,6 +157,8 @@ auth.post('/auth/login', rateLimit('auth'), async (c) => {
 
 auth.post('/auth/reset', rateLimit('auth'), async (c) => {
   const p = c.var.p
+  const geo = await geoBlock(c, 'login')
+  if (geo) return geo
   const b = await body(c)
   const email = normalizeEmail(b.email)
   if (!email) return fail(c, 400, '邮箱格式不正确')
@@ -175,9 +185,13 @@ auth.post('/auth/logout', async (c) => {
 
 auth.get('/me', (c) => c.json({ user: c.var.user }))
 
-auth.get('/config', (c) => {
+auth.get('/config', async (c) => {
   const { appName, registrationEnabled, loginCaptcha, captcha, mail } = c.var.p.config
+  const cc = country(c)
+  c.header('Cache-Control', 'no-store')
   return c.json({
+    // 当前访问者被地域白名单拒绝的范围，前端据此提前提示
+    geo: { country: cc, blocked: await blockedScopes(c.var.p, cc) },
     mail: { configured: mail.driver !== 'none', devConsole: mail.driver === 'console' },
     appName,
     registrationEnabled,

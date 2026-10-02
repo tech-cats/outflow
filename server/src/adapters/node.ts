@@ -1,5 +1,8 @@
 import nodemailer from 'nodemailer'
+import { readFileSync } from 'node:fs'
 import { mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises'
+import { isIP } from 'node:net'
+import { Reader, type CountryResponse } from 'mmdb-lib'
 import { dirname, join, resolve } from 'node:path'
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite'
 import { loadConfig, type Config } from '../config'
@@ -83,6 +86,7 @@ export function nodePlatform(opts: { db: DB; dataDir: string; env: Record<string
   const rooms = new Map<string, Room>()
   // 部署在反向代理之后时设为 true，才信任 X-Forwarded-For
   const trustProxy = opts.env.TRUST_PROXY === 'true'
+  const geoReader = config.geo.mmdbPath ? new Reader<CountryResponse>(readFileSync(config.geo.mmdbPath)) : null
 
   const p: NodePlatform = {
     config,
@@ -110,7 +114,7 @@ export function nodePlatform(opts: { db: DB; dataDir: string; env: Record<string
     },
     mailer:
       pickMailer(config, smtpMailer),
-    rateLimit: memoryRateLimiter(),
+    rateLimit: memoryRateLimiter(opts.env),
     // 自部署时 SQLite 就在本地，无需页面缓存
     cache: {
       async match() {
@@ -130,6 +134,21 @@ export function nodePlatform(opts: { db: DB; dataDir: string; env: Record<string
           room.doc.destroy()
         }
       },
+    },
+    clientCountry(req, rawEnv) {
+      if (config.geo.header) {
+        const v = req.headers.get(config.geo.header)
+        if (v && /^[A-Za-z][A-Za-z0-9]$/.test(v) && v.toUpperCase() !== 'XX') return v.toUpperCase()
+      }
+      if (!geoReader) return null
+      const ip = p.clientIp(req, rawEnv).replace(/^::ffff:/, '')
+      if (!isIP(ip)) return null
+      try {
+        const r = geoReader.get(ip)
+        return r?.country?.iso_code ?? r?.registered_country?.iso_code ?? null
+      } catch {
+        return null
+      }
     },
     clientIp(req, rawEnv) {
       if (trustProxy) {

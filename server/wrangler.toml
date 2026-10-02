@@ -55,6 +55,11 @@ REGISTRATION_ENABLED = "true"
 CAPTCHA_PROVIDER = "altcha"
 # 登录验证：always（每次都要）| after_failures（连续失败 3 次后才要）
 LOGIN_CAPTCHA = "always"
+# 地域白名单：ISO 两位代码，逗号分隔，留空 = 不限制；Cloudflare 自动识别请求地区。管理后台可覆盖
+GEO_REGISTER_COUNTRIES = "CN,HK"
+GEO_LOGIN_COUNTRIES = ""
+# 无法识别地区（如 Tor）时：deny | allow
+GEO_UNKNOWN = "deny"
 CAPTCHA_SITE_KEY = ""
 # 留空自动选择（配了 SMTP_HOST 用 smtp，配了 RESEND_API_KEY 用 resend，都没有则无法发送验证码）
 # console 仅把邮件打印到日志，切勿用于生产
