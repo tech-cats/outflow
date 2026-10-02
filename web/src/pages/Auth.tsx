@@ -27,6 +27,9 @@ function AuthCard({
   const blocked = config?.geo.blocked.includes(scope)
   return (
     <div className="auth-wrap">
+      <a className="auth-back" href="/">
+        ← 返回首页
+      </a>
       <a className="brand auth-brand" href="/">
         <span className="brand-mark" />
         {config?.appName ?? 'Outflow'}

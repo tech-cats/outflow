@@ -1,7 +1,9 @@
 /* SPA 专用样式；基础 token 与排版来自 server/src/views/styles.ts */
 
 /* ---------- 登录注册 ---------- */
-.auth-wrap { flex: 1 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 76px 16px 40px; background: var(--bg-soft); }
+.auth-wrap { position: relative; flex: 1 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 76px 16px 40px; background: var(--bg-soft); }
+.auth-back { position: absolute; top: 18px; left: 20px; font-size: 14px; color: var(--fg-muted); }
+.auth-back:hover { color: var(--fg); text-decoration: none; }
 .auth-brand { margin-bottom: 20px; font-size: 20px; }
 .auth-card { width: 100%; max-width: 380px; padding: 28px; box-shadow: var(--shadow); }
 .auth-card h1 { font-size: 20px; margin: 0 0 18px; }
