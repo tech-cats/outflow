@@ -1,14 +1,39 @@
 import type { CommentJson } from '../core/comments'
 import { MAX_COMMENT_LENGTH } from '../core/comments'
+import { tokenize } from '../lib/comment-text'
 import { Time } from './layout'
 
 /** 阅读页底部的文末讨论（仅登录用户可见，不进入边缘缓存） */
-export function Discussion(props: { docId: string; comments: CommentJson[]; userId: string; canModerate: boolean }) {
+export function CommentText({ body, names }: { body: string; names: Record<string, string> }) {
+  return (
+    <>
+      {tokenize(body).map((x) =>
+        x.t === 'mention' ? (
+          <span class="mention">@{names[x.id] ?? '未知用户'}</span>
+        ) : x.t === 'link' ? (
+          <a href={x.v} target="_blank" rel="noopener nofollow ugc">
+            {x.v}
+          </a>
+        ) : (
+          x.v
+        ),
+      )}
+    </>
+  )
+}
+
+export function Discussion(props: {
+  docId: string
+  comments: CommentJson[]
+  names: Record<string, string>
+  userId: string
+  canModerate: boolean
+}) {
   const roots = props.comments.filter((c) => !c.parentId && !c.anchor)
   const replies = (id: string) => props.comments.filter((c) => c.parentId === id)
   const count = roots.reduce((n, r) => n + 1 + replies(r.id).length, 0)
   const item = (c: CommentJson) => (
-    <div class="comment">
+    <div class="comment" id={`c-${c.id}`}>
       <div class="comment-head">
         <strong>{c.authorName ?? '已注销用户'}</strong>
         <Time ts={c.createdAt} />
@@ -18,7 +43,9 @@ export function Discussion(props: { docId: string; comments: CommentJson[]; user
           </button>
         )}
       </div>
-      <div class="comment-body">{c.body}</div>
+      <div class="comment-body">
+        <CommentText body={c.body} names={props.names} />
+      </div>
     </div>
   )
   return (

@@ -16,6 +16,7 @@ import {
   NoteButton,
   NotesPanel,
   makeAnchor,
+  scrollToAnchor,
   useAnchorSync,
   useComments,
   useSelectionRange,
@@ -478,6 +479,24 @@ function CollabEditor({
   )
   editorRef.current = editor
   useAnchorSync(editor, comments.data, pending, active)
+
+  // 从通知跳转过来（?note=）：文档同步完成后定位到对应批注
+  const initialNote = useRef(new URLSearchParams(location.search).get('note'))
+  const [synced, setSynced] = useState(provider.synced)
+  useEffect(() => {
+    const on = (s: boolean) => setSynced(s)
+    provider.on('sync', on)
+    return () => provider.off('sync', on)
+  }, [provider])
+  useEffect(() => {
+    const id = initialNote.current
+    const target = id && comments.data?.comments.find((c) => c.id === id)
+    if (!editor || !synced || !target) return
+    initialNote.current = null
+    setActive(target.id)
+    setNotesOpen(true)
+    if (target.anchor) setTimeout(() => !editor.isDestroyed && scrollToAnchor(editor, target.anchor!), 50)
+  }, [editor, synced, comments.data])
   const sel = useSelectionRange(editor)
 
   if (!editor) return null

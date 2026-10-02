@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { hasRole } from '../core/access'
+import { chainReadable, hasRole } from '../core/access'
 import {
   MAX_COMMENT_LENGTH,
   MAX_QUOTE_LENGTH,
@@ -8,8 +8,9 @@ import {
   listComments,
   parseAnchor,
 } from '../core/comments'
+import { mentionNames, notify } from '../core/notify'
 import { newId } from '../lib/crypto'
-import type { AppEnv } from '../types'
+import type { AppEnv, Role } from '../types'
 import { loadDoc } from './docs'
 import { body, fail, rateLimit, requireUser } from './util'
 
@@ -20,8 +21,10 @@ comments.get('/docs/:id/comments', requireUser, rateLimit('read'), async (c) => 
   const r = await loadDoc(c, c.req.param('id'), 'read')
   if (r.res) return r.res
   c.header('Cache-Control', 'no-store')
+  const list = await listComments(c.var.p.db, r.doc.id)
   return c.json({
-    comments: await listComments(c.var.p.db, r.doc.id),
+    comments: list,
+    mentions: await mentionNames(c.var.p, list.map((x) => x.body)),
     canModerate: hasRole(c.var.user, 'editor'),
     canResolveAll: r.canEdit || hasRole(c.var.user, 'editor'),
   })
@@ -65,8 +68,26 @@ comments.post('/docs/:id/comments', requireUser, rateLimit('write'), async (c) =
     quote,
     Date.now(),
   )
+  await notify(p, { type: 'comment.created', actor: c.var.user!, docId: r.doc.id, commentId: id }, origin(c))
   return c.json({ id })
 })
+
+/** @ 提及候选：只列出能读到这篇文档的用户 */
+comments.get('/docs/:id/mentionable', requireUser, rateLimit('read'), async (c) => {
+  const r = await loadDoc(c, c.req.param('id'), 'read')
+  if (r.res) return r.res
+  const q = (c.req.query('q') ?? '').trim().slice(0, 30).replace(/[%_\\]/g, (m) => '\\' + m)
+  const rows = await c.var.p.db.all<{ id: string; email: string; name: string; role: Role }>(
+    `SELECT id, email, name, role FROM users WHERE disabled = 0 AND name LIKE ? ESCAPE '\\' ORDER BY name LIMIT 50`,
+    `%${q}%`,
+  )
+  const users = rows.filter((u) => u.id !== c.var.user!.id && chainReadable(u, r.chain)).slice(0, 8)
+  return c.json({ users: users.map((u) => ({ id: u.id, name: u.name })) })
+})
+
+function origin(c: Parameters<typeof loadDoc>[0]) {
+  return c.var.p.config.appUrl || new URL(c.req.url).origin
+}
 
 async function loadComment(c: Parameters<typeof loadDoc>[0], id: string) {
   const row = await c.var.p.db.get<{ id: string; doc_id: string; parent_id: string | null; author_id: string }>(
@@ -92,6 +113,7 @@ comments.patch('/comments/:id', requireUser, rateLimit('write'), async (c) => {
     b.resolved ? c.var.user!.id : null,
     r.row.id,
   )
+  if (b.resolved) await notify(c.var.p, { type: 'comment.resolved', actor: c.var.user!, docId: r.row.doc_id, commentId: r.row.id }, origin(c))
   return c.json({ ok: true })
 })
 

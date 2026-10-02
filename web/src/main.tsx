@@ -4,6 +4,7 @@ import { POWERED_BY, baseCss } from '../../server/src/views/styles'
 import './app.css'
 import { AdminPage } from './pages/Admin'
 import { NewPage } from './pages/New'
+import { NotificationsPage } from './pages/Notifications'
 import { SessionProvider } from './session'
 
 // 与服务端阅读页共用同一份基础样式
@@ -46,6 +47,7 @@ const routes = [
   createRoute({ getParentRoute: () => rootRoute, path: '/reset', component: lazyRouteComponent(auth, 'ResetPage') }),
   createRoute({ getParentRoute: () => rootRoute, path: '/new', component: NewPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/admin', component: AdminPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/notifications', component: NotificationsPage }),
   editRoute,
 ]
 

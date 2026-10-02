@@ -126,3 +126,17 @@ altcha-widget[display="invisible"] { position: absolute; width: 0; height: 0; ov
 .resolved-toggle { margin: 4px 0 10px; }
 .btn.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 @media (min-width: 1280px) { body.notes-open .main { padding-right: 420px; } }
+.mention-wrap { position: relative; }
+.mention-list { position: absolute; left: 0; top: 100%; z-index: 45; min-width: 180px; max-height: 240px; overflow-y: auto; margin: 4px 0 0; padding: 4px; list-style: none; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); }
+.mention-list button { display: block; width: 100%; text-align: left; padding: 6px 10px; border: 0; border-radius: 6px; background: none; color: var(--fg); cursor: pointer; font-size: 14px; }
+.mention-list button.on, .mention-list button:hover { background: var(--accent-soft); }
+
+/* ---------- 通知 ---------- */
+.notify-setting { display: flex; align-items: center; gap: 6px; margin: 4px 0 12px; }
+.notify-list li { padding: 0; }
+.notify-list li.unread { background: color-mix(in srgb, var(--accent-soft) 60%, transparent); }
+.notify-item { display: flex; flex-direction: column; gap: 3px; width: 100%; padding: 12px 10px; border: 0; background: none; text-align: left; cursor: pointer; color: var(--fg); font-size: 14px; }
+.notify-item:hover { background: var(--bg-hover); }
+.notify-list li.unread .notify-item strong::before { content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: var(--accent); vertical-align: 2px; }
+.notify-doc { color: var(--fg-soft); }
+.notify-excerpt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

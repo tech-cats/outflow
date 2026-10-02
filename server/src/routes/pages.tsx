@@ -4,6 +4,7 @@ import { getCookie } from 'hono/cookie'
 import { canEditChain, chainReadable, effectiveVisibility, hasRole, filterReadable, loadChain, type DocNode } from '../core/access'
 import { SESSION_COOKIE } from '../core/auth'
 import { listComments } from '../core/comments'
+import { mentionNames } from '../core/notify'
 import { searchDocs } from '../core/search'
 import { escapeHtml, jsonToHtml } from '../lib/prosemirror'
 import type { AppEnv, PMNode } from '../types'
@@ -198,6 +199,7 @@ pages.get('/d/:id', rateLimit('read'), (c) =>
       // 评论只给登录用户看，匿名页面因此可以安全地进入缓存
       user ? listComments(p.db, doc.id) : [],
     ])
+    const names = await mentionNames(p, comments.map((x) => x.body))
     const openNotes = comments.filter((x) => x.anchor && !x.parentId && !x.resolved).length
     const readableTree = filterReadable(user, tree)
     const titles = new Map(tree.map((d) => [d.id, d.title]))
@@ -257,7 +259,7 @@ pages.get('/d/:id', rateLimit('read'), (c) =>
                 </span>
               </div>
               <div class="prose" dangerouslySetInnerHTML={{ __html: html || '<p class="muted">（空文档）</p>' }} />
-              {user && <Discussion docId={doc.id} comments={comments} userId={user.id} canModerate={hasRole(user, 'editor')} />}
+              {user && <Discussion docId={doc.id} comments={comments} names={names} userId={user.id} canModerate={hasRole(user, 'editor')} />}
             </article>
           </main>
         </div>

@@ -56,6 +56,9 @@ export function Layout(props: LayoutProps) {
                     写文档
                   </a>
                 )}
+                <a href="/notifications" class="bell" title="通知">
+                  通知<span class="bell-count" id="bell-count" hidden />
+                </a>
                 {props.user.role === 'admin' && <a href="/admin">管理</a>}
                 <span class="muted">{props.user.name}</span>
                 <button class="link" id="logout">
@@ -79,7 +82,7 @@ export function Layout(props: LayoutProps) {
         {props.user && (
           <script
             dangerouslySetInnerHTML={{
-              __html: `document.getElementById('logout').onclick=async()=>{await fetch('/api/auth/logout',{method:'POST'});location.reload()}`,
+              __html: `document.getElementById('logout').onclick=async()=>{await fetch('/api/auth/logout',{method:'POST'});location.reload()};${BELL_JS}`,
             }}
           />
         )}
@@ -88,6 +91,9 @@ export function Layout(props: LayoutProps) {
     </>
   )
 }
+
+/** 未读通知数：登录页面不缓存，但计数用接口取，避免每次渲染都查库 */
+const BELL_JS = `(function(){var el=document.getElementById('bell-count');function f(){if(document.hidden)return;fetch('/api/notifications/unread',{cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(d){if(!d)return;el.textContent=d.count>99?'99+':d.count;el.hidden=!d.count}).catch(function(){})}f();setInterval(f,60000)})()`
 
 const VIS_LABEL: Record<Visibility, string> = { public: '公开', protected: '仅登录可见', draft: '草稿' }
 

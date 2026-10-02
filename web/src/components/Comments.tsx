@@ -5,6 +5,7 @@ import { absolutePositionToRelativePosition, relativePositionToAbsolutePosition,
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { WebsocketProvider } from 'y-websocket'
 import * as Y from 'yjs'
+import { tokenize } from '../../../server/src/lib/comment-text'
 import { api, formatTime, type User } from '../api'
 
 export interface Comment {
@@ -21,6 +22,8 @@ export interface Comment {
 
 interface CommentsData {
   comments: Comment[]
+  /** 正文中被 @ 的用户：id → 名字 */
+  mentions: Record<string, string>
   canModerate: boolean
   canResolveAll: boolean
 }
@@ -250,31 +253,125 @@ export function NoteButton({ top, left, onClick }: { top: number; left: number; 
 
 /* ---------------- 讨论串 ---------------- */
 
-function Composer(props: { placeholder: string; submitLabel: string; autoFocus?: boolean; onSubmit(body: string): Promise<boolean>; onCancel?(): void }) {
+interface Mentionable {
+  id: string
+  name: string
+}
+
+/**
+ * 评论输入框。输入 @ 弹出可提及的用户（只含能读到文档的人）；
+ * 输入框里显示 @名字，提交时把选中过的名字换成 <@id>。
+ */
+function Composer(props: {
+  docId: string
+  placeholder: string
+  submitLabel: string
+  autoFocus?: boolean
+  onSubmit(body: string): Promise<boolean>
+  onCancel?(): void
+}) {
   const [body, setBody] = useState('')
   const [busy, setBusy] = useState(false)
+  const [sugg, setSugg] = useState<{ start: number; users: Mentionable[]; idx: number } | null>(null)
+  const picked = useRef(new Map<string, string>())
+  const seq = useRef(0)
+  const ta = useRef<HTMLTextAreaElement>(null)
+
+  const encode = (text: string) => {
+    let out = text
+    // 长名字优先，避免「张三」误替换「张三丰」的前缀
+    for (const [name, id] of [...picked.current].sort((a, b) => b[0].length - a[0].length)) out = out.split(`@${name}`).join(`<@${id}>`)
+    return out
+  }
+
+  const detect = (text: string, caret: number) => {
+    const m = /(?:^|\s)@([^\s@]{0,20})$/.exec(text.slice(0, caret))
+    if (!m) return setSugg(null)
+    const n = ++seq.current
+    const start = caret - m[1].length - 1
+    api<{ users: Mentionable[] }>(`/docs/${props.docId}/mentionable?q=${encodeURIComponent(m[1])}`)
+      .then((r) => n === seq.current && setSugg(r.users.length ? { start, users: r.users, idx: 0 } : null))
+      .catch(() => {})
+  }
+
+  const choose = (u: Mentionable) => {
+    if (!sugg || !ta.current) return
+    const caret = ta.current.selectionStart
+    const insert = `@${u.name} `
+    const next = body.slice(0, sugg.start) + insert + body.slice(caret)
+    picked.current.set(u.name, u.id)
+    setBody(next)
+    setSugg(null)
+    seq.current++
+    const pos = sugg.start + insert.length
+    requestAnimationFrame(() => {
+      ta.current?.focus()
+      ta.current?.setSelectionRange(pos, pos)
+    })
+  }
+
   const submit = async (e?: React.FormEvent) => {
     e?.preventDefault()
     if (!body.trim() || busy) return
     setBusy(true)
-    if (await props.onSubmit(body)) setBody('')
+    if (await props.onSubmit(encode(body))) {
+      setBody('')
+      picked.current.clear()
+    }
     setBusy(false)
   }
+
   return (
     <form className="comment-form" onSubmit={submit} onClick={(e) => e.stopPropagation()}>
-      <textarea
-        className="input"
-        rows={2}
-        maxLength={2000}
-        placeholder={props.placeholder}
-        autoFocus={props.autoFocus}
-        value={body}
-        onChange={(e) => setBody(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void submit()
-          if (e.key === 'Escape') props.onCancel?.()
-        }}
-      />
+      <div className="mention-wrap">
+        <textarea
+          ref={ta}
+          className="input"
+          rows={2}
+          maxLength={2000}
+          placeholder={props.placeholder}
+          autoFocus={props.autoFocus}
+          value={body}
+          onChange={(e) => {
+            setBody(e.target.value)
+            detect(e.target.value, e.target.selectionStart)
+          }}
+          onBlur={() => setTimeout(() => setSugg(null), 150)}
+          onKeyDown={(e) => {
+            if (sugg) {
+              if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault()
+                const d = e.key === 'ArrowDown' ? 1 : -1
+                setSugg({ ...sugg, idx: (sugg.idx + d + sugg.users.length) % sugg.users.length })
+                return
+              }
+              if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault()
+                choose(sugg.users[sugg.idx])
+                return
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault()
+                setSugg(null)
+                return
+              }
+            }
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void submit()
+            if (e.key === 'Escape') props.onCancel?.()
+          }}
+        />
+        {sugg && (
+          <ul className="mention-list">
+            {sugg.users.map((u, i) => (
+              <li key={u.id}>
+                <button type="button" className={i === sugg.idx ? 'on' : ''} onMouseDown={(e) => e.preventDefault()} onClick={() => choose(u)}>
+                  {u.name}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
       <div className="row-gap">
         <button className="btn btn-primary btn-sm" disabled={busy || !body.trim()}>
           {props.submitLabel}
@@ -284,14 +381,35 @@ function Composer(props: { placeholder: string; submitLabel: string; autoFocus?:
             取消
           </button>
         )}
+        <span className="muted small">输入 @ 可提及他人</span>
       </div>
     </form>
   )
 }
 
-function CommentItem({ c, canDelete, onDelete }: { c: Comment; canDelete: boolean; onDelete(): void }) {
+function CommentText({ body, names }: { body: string; names: Record<string, string> }) {
   return (
-    <div className="comment">
+    <>
+      {tokenize(body).map((x, i) =>
+        x.t === 'mention' ? (
+          <span key={i} className="mention">
+            @{names[x.id] ?? '未知用户'}
+          </span>
+        ) : x.t === 'link' ? (
+          <a key={i} href={x.v} target="_blank" rel="noopener nofollow ugc">
+            {x.v}
+          </a>
+        ) : (
+          <span key={i}>{x.v}</span>
+        ),
+      )}
+    </>
+  )
+}
+
+function CommentItem({ c, names, canDelete, onDelete }: { c: Comment; names: Record<string, string>; canDelete: boolean; onDelete(): void }) {
+  return (
+    <div className="comment" id={`c-${c.id}`}>
       <div className="comment-head">
         <strong>{c.authorName ?? '已注销用户'}</strong>
         <span>{formatTime(c.createdAt)}</span>
@@ -301,7 +419,9 @@ function CommentItem({ c, canDelete, onDelete }: { c: Comment; canDelete: boolea
           </button>
         )}
       </div>
-      <div className="comment-body">{c.body}</div>
+      <div className="comment-body">
+        <CommentText body={c.body} names={names} />
+      </div>
     </div>
   )
 }
@@ -330,12 +450,13 @@ function Thread(props: {
           {root.quote || '（无引用）'}
         </blockquote>
       )}
-      <CommentItem c={root} canDelete={canDelete(root)} onDelete={() => del(root)} />
+      <CommentItem c={root} names={data.mentions} canDelete={canDelete(root)} onDelete={() => del(root)} />
       {props.replies.map((r) => (
-        <CommentItem key={r.id} c={r} canDelete={canDelete(r)} onDelete={() => del(r)} />
+        <CommentItem key={r.id} c={r} names={data.mentions} canDelete={canDelete(r)} onDelete={() => del(r)} />
       ))}
       {replying ? (
         <Composer
+          docId={props.docId}
           placeholder="回复…"
           submitLabel="回复"
           autoFocus
@@ -441,6 +562,7 @@ export function NotesPanel(props: {
         <div className="thread active">
           <blockquote className="note-quote">{props.pending.quote}</blockquote>
           <Composer
+            docId={props.docId}
             placeholder="写下你的批注…（⌘/Ctrl + Enter 发送）"
             submitLabel="发表批注"
             autoFocus
@@ -495,7 +617,7 @@ export function Discussion({ docId, me, comments }: { docId: string; me: User; c
       {roots.map((r) => (
         <Thread key={r.id} root={r} replies={data.comments.filter((c) => c.parentId === r.id)} docId={docId} me={me} data={data} mutate={comments.mutate} />
       ))}
-      <Composer placeholder="参与讨论…" submitLabel="发表" onSubmit={(body) => comments.mutate(() => api(`/docs/${docId}/comments`, { body: { body } }))} />
+      <Composer docId={docId} placeholder="参与讨论…" submitLabel="发表" onSubmit={(body) => comments.mutate(() => api(`/docs/${docId}/comments`, { body: { body } }))} />
     </section>
   )
 }

@@ -209,6 +209,57 @@ check('编辑可以删除他人讨论（连同回复）', (await as(dave, `/api/
   (await as(bob, `/api/docs/${pub}/comments`)).json.comments.length === 1)
 check('页脚包含 Powered by Outflow', (await call('/')).text.includes('github.com/tech-cats/outflow'))
 
+// ---- 通知 ----
+const inbox = async (u) => (await as(u, '/api/notifications')).json
+const unread = async (u) => (await as(u, '/api/notifications/unread')).json.count
+const mentionMails = () => [...readFileSync(LOG, 'utf8').matchAll(/to=dave@pku\.edu\.cn\n\s+subject: [^\n]*提到了你/g)].length
+check('匿名不能读取通知', (await call('/api/notifications')).status === 401)
+let n = await inbox({ cookie: alice })
+check('文档作者收到新批注通知', n.items.some((x) => x.type === 'comment' && x.link.includes(`note=${note}`)))
+r = await as(bob, `/api/docs/${pub}/mentionable?q=car`)
+check('提及候选只含能读文档的用户', r.json?.users?.some((u) => u.id === carol.id) && !r.json.users.some((u) => u.id === bob.id))
+check('读不到文档时不能查询提及候选', (await as(bob, `/api/docs/${draft}/mentionable`)).status === 404)
+
+const aliceBefore = (await inbox({ cookie: alice })).items.length
+r = await cm(carol, pub, { body: `<@${dave.id}> 帮忙看看 https://example.com/a` })
+const ask = r.json?.id
+await sleep(200)
+n = await inbox(dave)
+check('被提及者收到 mention 通知', n.items[0]?.type === 'mention' && n.items[0].excerpt.includes('@dave') && n.items[0].link === `/d/${pub}#c-${ask}`)
+check('文档作者同时收到 comment 通知', (await inbox({ cookie: alice })).items.length === aliceBefore + 1)
+check('提及发送邮件', mentionMails() === 1)
+await cm(carol, pub, { body: `<@${dave.id}> 再看一下` })
+await sleep(200)
+check('同一文档 10 分钟内有未读时不重复发邮件', (await unread(dave)) === 2 && mentionMails() === 1)
+
+await cm(dave, pub, { body: `收到 <@${carol.id}>`, parentId: ask })
+n = await inbox(carol)
+check('同一事件对同一人只发一条（提及优先于回复）', n.items.filter((x) => x.type === 'mention' || x.type === 'reply').length === 1 && n.items[0].type === 'mention')
+await cm(bob, pub, { body: '我也觉得', parentId: ask })
+n = await inbox(carol)
+check('讨论参与者收到回复通知', n.items[0]?.type === 'reply')
+check('操作者自己不收到通知', !(await inbox(bob)).items.some((x) => x.excerpt === '我也觉得'))
+r = await as(bob, `/d/${pub}`)
+check('阅读页渲染提及与链接', r.text.includes('<span class="mention">@dave</span>') && r.text.includes('href="https://example.com/a"'))
+
+const carolCount = await unread(carol)
+await cm({ cookie: alice }, draft, { body: `<@${carol.id}> 草稿` })
+check('读不到文档的人不会收到通知', (await unread(carol)) === carolCount)
+
+r = await cm(dave, pub, { body: '待解决', anchor, quote: '公开' })
+await as({ cookie: alice }, `/api/comments/${r.json.id}`, { method: 'PATCH', body: { resolved: true } })
+check('批注被他人解决时通知发起人', (await inbox(dave)).items[0]?.type === 'resolve')
+
+await as(carol, '/api/notifications/read', { body: {} })
+check('全部标为已读', (await unread(carol)) === 0)
+await as(dave, '/api/notifications/read', { body: { ids: [(await inbox(dave)).items[0].id] } })
+check('按 id 标为已读', (await inbox(dave)).items.filter((x) => !x.read).length === (await unread(dave)) && (await inbox(dave)).items[0].read)
+await as(carol, '/api/notifications/settings', { method: 'PUT', body: { email: false } })
+check('关闭邮件提醒', (await inbox(carol)).email.enabled === false)
+const daveCount = (await inbox(dave)).items.length
+await as(carol, `/api/comments/${ask}`, { method: 'DELETE' })
+check('删除评论后相关通知一并删除', (await inbox(dave)).items.length < daveCount)
+
 // ---- 登录：渐进式验证码 ----
 let flags = []
 for (let i = 0; i < 4; i++) {

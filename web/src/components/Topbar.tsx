@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { api, hasRole } from '../api'
 import { useSession } from '../session'
 import { toggleTheme } from '../theme'
@@ -5,6 +6,7 @@ import { toggleTheme } from '../theme'
 /** 与服务端阅读页保持一致的顶栏；跳到阅读页一律用整页导航 */
 export function Topbar({ children }: { children?: React.ReactNode }) {
   const { user, config } = useSession()
+  const unread = useUnread(!!user)
   return (
     <header className="topbar">
       <a className="brand" href="/">
@@ -27,6 +29,9 @@ export function Topbar({ children }: { children?: React.ReactNode }) {
                 写文档
               </a>
             )}
+            <a href="/notifications" className="bell" title="通知">
+              通知{unread > 0 && <span className="bell-count">{unread > 99 ? '99+' : unread}</span>}
+            </a>
             {user.role === 'admin' && <a href="/admin">管理</a>}
             <span className="muted">{user.name}</span>
             <button
@@ -52,3 +57,24 @@ export function Topbar({ children }: { children?: React.ReactNode }) {
   )
 }
 
+/** 未读通知数，每分钟刷新一次；其他组件可以派发 notifications:changed 事件立即刷新 */
+function useUnread(enabled: boolean) {
+  const [count, setCount] = useState(0)
+  useEffect(() => {
+    if (!enabled) return
+    const load = () => {
+      if (document.hidden) return
+      api<{ count: number }>('/notifications/unread')
+        .then((r) => setCount(r.count))
+        .catch(() => {})
+    }
+    load()
+    const t = setInterval(load, 60000)
+    window.addEventListener('notifications:changed', load)
+    return () => {
+      clearInterval(t)
+      window.removeEventListener('notifications:changed', load)
+    }
+  }, [enabled])
+  return count
+}

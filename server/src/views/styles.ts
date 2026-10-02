@@ -134,6 +134,12 @@ button.link { background: none; border: 0; padding: 0; cursor: pointer; color: v
 .notice { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 999px; box-shadow: var(--shadow); font-size: 14px; z-index: 50; }
 .notice a { color: inherit; text-decoration: underline; margin-left: 8px; }
 
+.bell { position: relative; }
+.bell-count { display: inline-block; min-width: 16px; height: 16px; padding: 0 4px; margin-left: 3px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 11px; line-height: 16px; text-align: center; vertical-align: 1px; }
+.bell-count[hidden] { display: none; }
+.mention { color: var(--accent); font-weight: 500; }
+.comment-body a { text-decoration: underline; text-underline-offset: 2px; word-break: break-all; }
+.comment:target { background: var(--accent-soft); border-radius: 6px; }
 .site-footer { margin-top: auto; padding: 20px 16px 28px; text-align: center; font-size: 12px; color: var(--fg-muted); border-top: 1px solid var(--border); }
 .site-footer a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 
