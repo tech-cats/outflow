@@ -3,6 +3,8 @@ dist
 data
 .env
 .dev.vars
+# 站点自己的 Cloudflare 配置（模板为 server/wrangler.example.toml）
+server/wrangler.toml
 .wrangler
 *.log
 .DS_Store

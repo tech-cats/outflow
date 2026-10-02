@@ -1,9 +1,11 @@
+# Cloudflare 部署配置模板。实际使用的是 server/wrangler.toml（不提交）：
+# pnpm setup:cf 会在它不存在时从本文件生成；正式站点建议放在单独的部署仓库中管理。
 name = "outflow"
 main = "src/entry/worker.ts"
 compatibility_date = "2026-09-01"
 compatibility_flags = ["nodejs_compat"]
 
-# 由 scripts/setup-cf.mjs 自动填写 database_id
+# 由 scripts/setup-cf.mjs 自动填写 database_id；同一账号部署多个站点时请修改 database_name 与 bucket_name
 [[d1_databases]]
 binding = "DB"
 database_name = "outflow"

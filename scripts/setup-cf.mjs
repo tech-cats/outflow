@@ -2,7 +2,8 @@
 /**
  * Cloudflare 一键部署：
  *   1. 检查 wrangler 登录状态
- *   2. 创建（或复用）D1 数据库与 R2 存储桶，并把 database_id 写回 wrangler.toml
+ *   2. 创建（或复用）D1 数据库与 R2 存储桶，并把 database_id 写回 server/wrangler.toml
+ *      （该文件不存在时从 wrangler.example.toml 生成；数据库名与存储桶名取自配置）
  *   3. 执行数据库迁移、构建前端、部署 Worker
  *   4. 设置机密：SESSION_SECRET（自动生成），以及环境中存在的 SMTP_PASS / CAPTCHA_SECRET / RESEND_API_KEY
  *
@@ -11,15 +12,24 @@
  */
 import { execSync, spawnSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const serverDir = join(root, 'server')
 const tomlPath = join(serverDir, 'wrangler.toml')
-const DB_NAME = 'outflow'
-const BUCKET = 'outflow-uploads'
+if (!existsSync(tomlPath)) {
+  copyFileSync(join(serverDir, 'wrangler.example.toml'), tomlPath)
+  console.log('已从 wrangler.example.toml 生成 server/wrangler.toml')
+}
+const tomlValue = (key) => {
+  const m = new RegExp(`^${key} = "([^"]+)"`, 'm').exec(readFileSync(tomlPath, 'utf8'))
+  if (!m) throw new Error(`server/wrangler.toml 中缺少 ${key}`)
+  return m[1]
+}
+const DB_NAME = tomlValue('database_name')
+const BUCKET = tomlValue('bucket_name')
 
 const wrangler = (args, opts = {}) =>
   execSync(`npx wrangler ${args}`, { cwd: serverDir, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], ...opts })
