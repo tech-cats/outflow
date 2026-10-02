@@ -35,6 +35,7 @@ export interface User {
 export interface AppConfig {
   appName: string
   registrationEnabled: boolean
+  loginCaptcha: 'always' | 'after_failures'
   captcha: { provider: 'altcha' | 'turnstile' | 'hcaptcha' | 'none'; siteKey: string }
 }
 

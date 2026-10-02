@@ -104,7 +104,9 @@ for (let i = 0; i < 4; i++) {
   r = await call('/api/auth/login', { body: { email: 'alice@pku.edu.cn', password: 'bad' } })
   flags.push(r.json?.captcha)
 }
-check('连续失败 3 次后要求验证码', JSON.stringify(flags) === '[false,false,true,true]', JSON.stringify(flags))
+const { loginCaptcha } = (await call('/api/config')).json
+const expected = loginCaptcha === 'always' ? '[true,true,true,true]' : '[false,false,true,true]'
+check(loginCaptcha === 'always' ? '每次登录都要求验证码' : '连续失败 3 次后要求验证码', JSON.stringify(flags) === expected, JSON.stringify(flags))
 r = await call('/api/auth/login', { body: { email: 'alice@pku.edu.cn', password: 'password123' } })
 check('正确密码可登录', r.status === 200)
 

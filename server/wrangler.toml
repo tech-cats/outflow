@@ -53,6 +53,8 @@ ALLOWED_EMAIL_DOMAINS = "*.edu.cn"
 REGISTRATION_ENABLED = "true"
 # altcha | turnstile | hcaptcha | none
 CAPTCHA_PROVIDER = "altcha"
+# 登录验证：always（每次都要）| after_failures（连续失败 3 次后才要）
+LOGIN_CAPTCHA = "always"
 CAPTCHA_SITE_KEY = ""
 # smtp | resend | console
 MAIL_DRIVER = "console"

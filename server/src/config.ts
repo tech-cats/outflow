@@ -7,6 +7,8 @@ export interface Config {
   sessionSecret: string
   allowedEmails: string[]
   registrationEnabled: boolean
+  /** always：每次登录都要人机验证；after_failures：连续失败 3 次后才要求 */
+  loginCaptcha: 'always' | 'after_failures'
   captcha: { provider: CaptchaProvider; siteKey: string; secret: string }
   mail: {
     driver: MailDriver
@@ -38,6 +40,7 @@ export function loadConfig(env: Record<string, unknown>): Config {
       .map((x) => x.trim().toLowerCase())
       .filter(Boolean),
     registrationEnabled: s('REGISTRATION_ENABLED', 'true') !== 'false',
+    loginCaptcha: s('LOGIN_CAPTCHA', 'always') === 'after_failures' ? 'after_failures' : 'always',
     captcha: {
       provider: s('CAPTCHA_PROVIDER', 'altcha') as CaptchaProvider,
       siteKey: s('CAPTCHA_SITE_KEY'),

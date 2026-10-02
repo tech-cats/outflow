@@ -45,7 +45,8 @@ export function LoginPage() {
   const { config } = useSession()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [needCaptcha, setNeedCaptcha] = useState(false)
+  const [failedEnough, setNeedCaptcha] = useState(false)
+  const needCaptcha = failedEnough || config?.loginCaptcha === 'always'
   const [captcha, setCaptcha] = useState<string | null>(null)
   const [captchaKey, setCaptchaKey] = useState(0)
   const [error, setError] = useState('')
@@ -93,7 +94,7 @@ export function LoginPage() {
         {needCaptcha && config && <Captcha key={captchaKey} config={config.captcha} onToken={setCaptcha} />}
         {error && <div className="form-error">{error}</div>}
         <button className="btn btn-primary" disabled={busy || (needCaptcha && config?.captcha.provider !== 'none' && !captcha)}>
-          {busy ? '登录中…' : '登录'}
+          {busy ? '登录中…' : needCaptcha && config?.captcha.provider !== 'none' && !captcha ? '安全验证中…' : '登录'}
         </button>
       </form>
     </AuthCard>
@@ -175,7 +176,7 @@ function CodeFlow({ purpose }: { purpose: 'register' | 'reset' }) {
         {config && <Captcha key={captchaKey} config={config.captcha} onToken={setCaptcha} />}
         {error && <div className="form-error">{error}</div>}
         <button className="btn btn-primary" disabled={busy || cooldown > 0 || (needsCaptcha && !captcha)}>
-          {busy ? '发送中…' : cooldown > 0 ? `${cooldown} 秒后可重发` : '发送验证码'}
+          {busy ? '发送中…' : cooldown > 0 ? `${cooldown} 秒后可重发` : needsCaptcha && !captcha ? '安全验证中…' : '发送验证码'}
         </button>
       </form>
     )

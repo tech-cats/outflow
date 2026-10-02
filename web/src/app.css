@@ -1,7 +1,7 @@
 /* SPA 专用样式；基础 token 与排版来自 server/src/views/styles.ts */
 
 /* ---------- 登录注册 ---------- */
-.auth-wrap { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 16px; background: var(--bg-soft); }
+.auth-wrap { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 76px 16px 40px; background: var(--bg-soft); }
 .auth-brand { margin-bottom: 20px; font-size: 20px; }
 .auth-card { width: 100%; max-width: 380px; padding: 28px; box-shadow: var(--shadow); }
 .auth-card h1 { font-size: 20px; margin: 0 0 18px; }
@@ -11,6 +11,15 @@
 .form-error { color: var(--danger); font-size: 13px; background: color-mix(in srgb, var(--danger) 8%, transparent); padding: 8px 10px; border-radius: 6px; }
 .form-info { color: var(--ok); font-size: 13px; background: color-mix(in srgb, var(--ok) 8%, transparent); padding: 8px 10px; border-radius: 6px; }
 altcha-widget { --altcha-max-width: 100%; }
+altcha-widget[display="invisible"] { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+/* 顶部通知（隐式人机验证的进度提示） */
+.toast { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 100; display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 999px; font-size: 13px; color: var(--fg); background: var(--bg); border: 1px solid var(--border); box-shadow: var(--shadow); animation: toast-in .2s ease-out; white-space: nowrap; }
+.toast-ok { color: var(--ok); }
+.toast-error { color: var(--danger); cursor: pointer; font: inherit; font-size: 13px; }
+.spinner { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--border); border-top-color: var(--accent); animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
 /* ---------- 编辑器 ---------- */
 .title-input { width: 100%; border: 0; outline: none; resize: none; background: transparent; font-size: 34px; font-weight: 700; line-height: 1.25; letter-spacing: -.3px; padding: 0; margin: 0 0 8px; overflow: hidden; }

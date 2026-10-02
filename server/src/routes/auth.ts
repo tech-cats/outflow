@@ -40,7 +40,8 @@ function setSessionCookie(c: Context<AppEnv>, token: string) {
   })
 }
 
-auth.get('/captcha/challenge', rateLimit('auth'), async (c) => {
+// 出题只是签名，开销很小；隐式验证每次打开页面都会请求，放在宽松的 read 限流里，避免误伤共用出口 IP 的校园网
+auth.get('/captcha/challenge', rateLimit('read'), async (c) => {
   if (c.var.p.config.captcha.provider !== 'altcha') return fail(c, 404, 'altcha 未启用')
   c.header('Cache-Control', 'no-store')
   return c.json(await createAltchaChallenge(c.var.p))
@@ -122,7 +123,8 @@ auth.post('/auth/login', rateLimit('auth'), async (c) => {
   if (lockedUntil) {
     return fail(c, 429, `失败次数过多，请 ${Math.ceil((lockedUntil - Date.now()) / 60000)} 分钟后再试`)
   }
-  const needCaptcha = Math.max(byEmail.count, byIp.count) >= CAPTCHA_AFTER_FAILURES
+  const always = p.config.loginCaptcha === 'always'
+  const needCaptcha = always || Math.max(byEmail.count, byIp.count) >= CAPTCHA_AFTER_FAILURES
   if (needCaptcha && !(await verifyCaptcha(p, b.captcha, ip(c)))) {
     return fail(c, 400, '请完成人机验证', { captcha: true })
   }
@@ -136,7 +138,7 @@ auth.post('/auth/login', rateLimit('auth'), async (c) => {
   if (!user || !ok) {
     await Promise.all(keys.map((k) => recordFailure(p, k)))
     const count = Math.max(byEmail.count, byIp.count) + 1
-    return fail(c, 401, '邮箱或密码错误', { captcha: count >= CAPTCHA_AFTER_FAILURES })
+    return fail(c, 401, '邮箱或密码错误', { captcha: always || count >= CAPTCHA_AFTER_FAILURES })
   }
   if (user.disabled) return fail(c, 403, '账号已被停用')
   await clearFailures(p, keys[0])
@@ -173,10 +175,11 @@ auth.post('/auth/logout', async (c) => {
 auth.get('/me', (c) => c.json({ user: c.var.user }))
 
 auth.get('/config', (c) => {
-  const { appName, registrationEnabled, captcha } = c.var.p.config
+  const { appName, registrationEnabled, loginCaptcha, captcha } = c.var.p.config
   return c.json({
     appName,
     registrationEnabled,
+    loginCaptcha,
     captcha: { provider: captcha.provider, siteKey: captcha.siteKey },
   })
 })

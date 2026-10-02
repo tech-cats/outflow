@@ -14,7 +14,7 @@
 | 可见性 | `公开`（默认，所有人与搜索引擎可读）/ `仅登录可见` / `草稿`（仅作者与管理员）。子文档不会比父文档更开放：只要任何一级祖先不可读，子文档就不可读 |
 | 协作 | 多人实时编辑，显示协作者光标和在线头像；匿名读者在阅读页会看到「文档已更新」提示 |
 | 注册 | 必须通过邮箱验证码注册，并且只接受**白名单**内的邮箱，其余一律拒绝。白名单在发信前检查，不在名单内的邮箱不会消耗邮件额度 |
-| 防滥用 | 人机验证可切换：ALTCHA（自托管 PoW，默认）、Turnstile、hCaptcha；按 IP 和用户限流；登录失败 3 次后要求验证码，10 次后锁定 15 分钟；验证码有冷却时间、尝试次数和每日上限 |
+| 防滥用 | 人机验证可切换：ALTCHA（自托管 PoW，默认；隐式运行，打开页面即在后台自动完成，只在顶部弹出提示）、Turnstile、hCaptcha；按 IP 和用户限流；登录默认每次都要人机验证（`LOGIN_CAPTCHA=after_failures` 可改为失败 3 次后才要求），失败 10 次锁定 15 分钟；验证码有冷却时间、尝试次数和每日上限 |
 | 内容 | 集合 → 文档树（拖拽排序或嵌套）、版本历史（每 10 分钟一个快照，可回滚）、图片粘贴或拖入上传、导出 Markdown、搜索（对中文友好的子串匹配） |
 | SEO | 公开文档由服务端渲染，并提供 sitemap.xml、canonical 和 og 标签；非公开文档自动 `noindex` |
 | 管理 | 白名单规则、用户角色与停用、集合管理、文档锁定（锁定后仅管理员可编辑） |
@@ -88,6 +88,7 @@ docker compose up -d --build
 | `ALLOWED_EMAIL_DOMAINS` | 注册白名单，用逗号分隔：`*.edu.cn`（任意子域）、`@pku.edu.cn`（精确域名）、`a@gmail.com`（单个邮箱）。管理后台可以再追加规则 |
 | `REGISTRATION_ENABLED` | `false` 表示关闭注册 |
 | `CAPTCHA_PROVIDER` | `altcha`（默认）、`turnstile`、`hcaptcha` 或 `none`。后两种第三方服务需要配置 `CAPTCHA_SITE_KEY` 和 `CAPTCHA_SECRET` |
+| `LOGIN_CAPTCHA` | `always`（默认，每次登录都要人机验证）或 `after_failures`（连续失败 3 次后才要求） |
 | `MAIL_DRIVER` | `smtp`、`resend` 或 `console` |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS` | SMTP 配置。在 Workers 上必须用 465 或 587 端口 |
 | `APP_URL` | 对外访问地址，用于 sitemap 和 canonical；以 `https` 开头时会自动给 Cookie 加 `Secure` |
