@@ -1,9 +1,10 @@
 import { Hono } from 'hono'
+import { ROLES } from '../core/access'
 import { getEmailRules } from '../core/auth'
 import { parseCountries, type GeoScope } from '../config'
 import { GEO_SCOPES, getGeoRules, isAllowed, setGeoRule } from '../core/geo'
 import { normalizeRule } from '../lib/email-rules'
-import type { AppEnv } from '../types'
+import type { AppEnv, Role } from '../types'
 import { body, country, fail, requireAdmin } from './util'
 
 const admin = new Hono<AppEnv>()
@@ -35,7 +36,7 @@ admin.patch('/users/:id', async (c) => {
   const b = await body(c)
   const db = c.var.p.db
   if (id === c.var.user!.id) return fail(c, 400, '不能修改自己的角色或状态')
-  if (b.role === 'admin' || b.role === 'member') await db.run('UPDATE users SET role = ? WHERE id = ?', b.role, id)
+  if (ROLES.includes(b.role as Role)) await db.run('UPDATE users SET role = ? WHERE id = ?', b.role, id)
   if (typeof b.disabled === 'boolean') {
     await db.run('UPDATE users SET disabled = ? WHERE id = ?', b.disabled ? 1 : 0, id)
     if (b.disabled) await db.run('DELETE FROM sessions WHERE user_id = ?', id)

@@ -1,5 +1,6 @@
 import { raw } from 'hono/html'
 import type { Child } from 'hono/jsx'
+import { hasRole } from '../core/access'
 import type { User, Visibility } from '../types'
 import { THEME_INIT_JS, THEME_TOGGLE_JS, baseCss } from './styles'
 
@@ -50,9 +51,11 @@ export function Layout(props: LayoutProps) {
             </button>
             {props.user ? (
               <>
-                <a class="btn btn-primary btn-sm" href="/new">
-                  写文档
-                </a>
+                {hasRole(props.user, 'contributor') && (
+                  <a class="btn btn-primary btn-sm" href="/new">
+                    写文档
+                  </a>
+                )}
                 {props.user.role === 'admin' && <a href="/admin">管理</a>}
                 <span class="muted">{props.user.name}</span>
                 <button class="link" id="logout">

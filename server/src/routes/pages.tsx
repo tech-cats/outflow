@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { Context } from 'hono'
 import { getCookie } from 'hono/cookie'
-import { chainReadable, effectiveVisibility, filterReadable, loadChain, type DocNode } from '../core/access'
+import { canEditChain, chainReadable, effectiveVisibility, hasRole, filterReadable, loadChain, type DocNode } from '../core/access'
 import { SESSION_COOKIE } from '../core/auth'
 import { searchDocs } from '../core/search'
 import { escapeHtml, jsonToHtml } from '../lib/prosemirror'
@@ -63,7 +63,8 @@ pages.get('/', rateLimit('read'), (c) =>
         <main class="container">
           {collections.length === 0 && (
             <div class="card empty">
-              还没有任何集合。{c.var.user ? <a href="/new">创建第一个集合</a> : <a href="/login">登录后开始创作</a>}
+              还没有任何集合。
+              {hasRole(c.var.user, 'editor') ? <a href="/new">创建第一个集合</a> : !c.var.user && <a href="/login">登录后开始创作</a>}
             </div>
           )}
           <div class="grid">
@@ -142,7 +143,7 @@ pages.get('/c/:id', rateLimit('read'), (c) =>
           <h1 class="doc-title">{col.name}</h1>
           <div class="doc-meta">
             <span>{docs.length} 篇文档</span>
-            {c.var.user && (
+            {hasRole(c.var.user, 'contributor') && (
               <span class="actions">
                 <a class="btn btn-primary btn-sm" href={`/new?collection=${col.id}`}>
                   新建文档
@@ -184,7 +185,7 @@ pages.get('/d/:id', rateLimit('read'), (c) =>
       return { res: needLogin ? await loginRequired(c) : await notFound(c), cacheable: false }
     }
     const vis = effectiveVisibility(chain)
-    const canEdit = !!user && (!doc.locked || user.role === 'admin')
+    const canEdit = canEditChain(user, chain)
     const [col, tree, editor] = await Promise.all([
       p.db.get<{ id: string; name: string }>('SELECT id, name FROM collections WHERE id = ?', doc.collection_id),
       p.db.all<TreeRow>(

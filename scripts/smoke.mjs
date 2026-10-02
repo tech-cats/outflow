@@ -22,7 +22,8 @@ const check = (name, ok, extra = '') => {
 }
 
 async function call(path, { method, body, cookie, headers = {} } = {}) {
-  const h = { ...headers }
+  // 模拟浏览器：非 GET 请求带上同源 Origin（可被 headers 覆盖）
+  const h = method && method !== 'GET' ? { origin: BASE, ...headers } : { ...headers }
   if (cookie) h.cookie = cookie
   if (body !== undefined && !(body instanceof FormData)) h['content-type'] = 'application/json'
   const res = await fetch(BASE + path, {
@@ -125,6 +126,59 @@ check('上传图片', r.status === 200, r.json?.url)
 const img = r.json?.url
 check('匿名无法读取受保护文档的图片', (await call(img)).status === 404)
 check('登录用户可读取图片', (await call(img, { cookie: alice })).status === 200)
+
+// ---- 角色权限 ----
+const signup = async (name) => {
+  const email = `${name}@pku.edu.cn`
+  if (!lastCode(email)) {
+    await call('/api/auth/send-code', { body: { email, purpose: 'register' } })
+    await sleep(300)
+  }
+  const r = await call('/api/auth/register', { body: { email, code: lastCode(email), name, password: 'password123' } })
+  return { id: r.json?.user?.id, role: r.json?.user?.role, cookie: r.cookie }
+}
+const setRole = (u, role) => call(`/api/admin/users/${u.id}`, { method: 'PATCH', cookie: alice, body: { role } })
+const bob = await signup('bob')
+const carol = await signup('carol')
+const dave = await signup('dave')
+check('新用户默认为成员', bob.role === 'member' && carol.role === 'member')
+await setRole(carol, 'contributor')
+await setRole(dave, 'editor')
+r = await setRole(bob, 'superuser')
+check('非法角色被忽略', r.status === 200 && (await call('/api/admin/users', { cookie: alice })).json.users.find((u) => u.id === bob.id).role === 'member')
+
+const as = (u, path, opts = {}) => call(path, { ...opts, cookie: u.cookie })
+r = await as(bob, '/api/docs', { body: { collectionId: col, title: 'x' } })
+check('成员不能新建文档', r.status === 403)
+r = await as(bob, `/api/docs/${pub}`)
+check('成员只读', r.status === 200 && r.json.canEdit === false)
+check('成员不能修改文档', (await as(bob, `/api/docs/${pub}`, { method: 'PATCH', body: { title: 'x' } })).status === 403)
+check('成员看不到写文档入口', !(await as(bob, '/')).text.includes('href="/new"'))
+
+check('贡献者不能新建集合', (await as(carol, '/api/collections', { body: { name: 'x' } })).status === 403)
+r = await as(carol, '/api/docs', { body: { collectionId: col, title: '贡献者文档' } })
+check('贡献者可新建文档', r.status === 200)
+const cdoc = r.json?.id
+check('贡献者可修改自己的文档', (await as(carol, `/api/docs/${cdoc}`, { method: 'PATCH', body: { title: '改名' } })).status === 200)
+check('贡献者可发布自己的文档', (await as(carol, `/api/docs/${cdoc}`, { method: 'PATCH', body: { visibility: 'protected' } })).status === 200)
+check('贡献者不能修改他人文档', (await as(carol, `/api/docs/${pub}`, { method: 'PATCH', body: { title: 'x' } })).status === 403)
+r = await as(carol, '/api/docs', { body: { collectionId: col, title: '子', parentId: pub } })
+check('贡献者可在他人文档下新建子文档', r.status === 200)
+check('贡献者可删除自己的文档', (await as(carol, `/api/docs/${r.json?.id}`, { method: 'DELETE' })).status === 200)
+check('贡献者不能删除他人文档', (await as(carol, `/api/docs/${child}`, { method: 'DELETE' })).status === 403)
+
+check('编辑可修改他人文档', (await as(dave, `/api/docs/${cdoc}`, { method: 'PATCH', body: { title: '审稿' } })).status === 200)
+check('编辑不能把他人文档设为草稿', (await as(dave, `/api/docs/${cdoc}`, { method: 'PATCH', body: { visibility: 'draft' } })).status === 403)
+check('编辑看不到他人草稿', (await as(dave, `/api/docs/${draft}`)).status === 404)
+check('编辑不能连同子文档删除', (await as(dave, `/api/docs/${prot}`, { method: 'DELETE' })).status === 400)
+check('编辑可删除他人文档', (await as(dave, `/api/docs/${cdoc}`, { method: 'DELETE' })).status === 200)
+check('编辑可新建集合', (await as(dave, '/api/collections', { body: { name: '编辑集合' } })).status === 200)
+check('编辑不能锁定文档', (await as(dave, `/api/docs/${pub}`, { method: 'PATCH', body: { locked: true } })).status === 403)
+
+await call(`/api/docs/${pub}`, { method: 'PATCH', cookie: alice, body: { locked: true } })
+check('锁定后编辑不能修改', (await as(dave, `/api/docs/${pub}`, { method: 'PATCH', body: { title: 'x' } })).status === 403)
+check('锁定后不能新建子文档', (await as(dave, '/api/docs', { body: { collectionId: col, parentId: pub } })).status === 403)
+check('锁定后管理员仍可修改', (await call(`/api/docs/${pub}`, { method: 'PATCH', cookie: alice, body: { title: '公开文档' } })).status === 200)
 
 // ---- 登录：渐进式验证码 ----
 let flags = []

@@ -1,12 +1,12 @@
 import { Hono } from 'hono'
 import type { Context } from 'hono'
-import { VISIBILITIES, canEditChain, chainReadable, effectiveVisibility, filterReadable, loadChain, type DocNode } from '../core/access'
+import { VISIBILITIES, canAddChild, canEditChain, canToggleDraft, chainReadable, effectiveVisibility, filterReadable, loadChain, type DocNode } from '../core/access'
 import { docCacheKeys } from '../core/docs'
 import { searchDocs } from '../core/search'
 import { newId } from '../lib/crypto'
 import { jsonToHtml, jsonToMarkdown } from '../lib/prosemirror'
 import type { AppEnv, PMNode, Visibility } from '../types'
-import { body, fail, rateLimit, requireAdmin, requireUser, str } from './util'
+import { body, fail, rateLimit, requireAdmin, requireRole, requireUser, str } from './util'
 
 const docs = new Hono<AppEnv>()
 
@@ -62,7 +62,7 @@ docs.get('/collections', async (c) => {
   return c.json({ collections: rows })
 })
 
-docs.post('/collections', requireUser, rateLimit('write'), async (c) => {
+docs.post('/collections', requireRole('editor'), rateLimit('write'), async (c) => {
   const b = await body(c)
   const name = str(b.name, 60)
   if (!name) return fail(c, 400, '请填写集合名称')
@@ -110,7 +110,7 @@ docs.get('/collections/:id/tree', rateLimit('read'), async (c) => {
 
 /* ---------------- 文档 ---------------- */
 
-docs.post('/docs', requireUser, rateLimit('write'), async (c) => {
+docs.post('/docs', requireRole('contributor'), rateLimit('write'), async (c) => {
   const p = c.var.p
   const b = await body(c)
   const col = await p.db.get<{ id: string; default_visibility: Visibility }>(
@@ -121,8 +121,9 @@ docs.post('/docs', requireUser, rateLimit('write'), async (c) => {
   let visibility = col.default_visibility
   let parentId: string | null = null
   if (b.parentId) {
-    const r = await loadDoc(c, String(b.parentId), 'edit')
+    const r = await loadDoc(c, String(b.parentId), 'read')
     if (r.res) return r.res
+    if (!canAddChild(c.var.user, r.chain)) return fail(c, 403, '不能在该文档下新建子文档')
     if (r.doc.collection_id !== col.id) return fail(c, 400, '父文档不属于该集合')
     parentId = r.doc.id
     // 子文档默认继承父文档的可见性（草稿除外）
@@ -168,7 +169,7 @@ docs.get('/docs/:id', rateLimit('read'), async (c) => {
     collection: col,
     breadcrumbs: crumbs.filter(Boolean),
     canEdit: r.canEdit,
-    canManage: !!c.var.user && (c.var.user.role === 'admin' || c.var.user.id === r.doc.author_id),
+    canDraft: r.canEdit && canToggleDraft(c.var.user, r.doc),
   })
 })
 
@@ -187,7 +188,7 @@ docs.patch('/docs/:id', requireUser, rateLimit('write'), async (c) => {
   if (r.res) return r.res
   const b = await body(c)
   const doc = r.doc
-  const isManager = user.role === 'admin' || user.id === doc.author_id
+  const canDraft = canToggleDraft(user, doc)
 
   if (typeof b.title === 'string') {
     await p.db.run('UPDATE docs SET title = ?, updated_at = ?, updated_by = ? WHERE id = ?', b.title.trim().slice(0, 200), Date.now(), user.id, doc.id)
@@ -195,8 +196,8 @@ docs.patch('/docs/:id', requireUser, rateLimit('write'), async (c) => {
   if (b.visibility !== undefined) {
     if (!VISIBILITIES.includes(b.visibility as Visibility)) return fail(c, 400, '可见性参数错误')
     // 只有作者和管理员能设为草稿（草稿只有作者可见）
-    if (b.visibility === 'draft' && !isManager) return fail(c, 403, '只有作者或管理员可以设为草稿')
-    if (doc.visibility === 'draft' && !isManager) return fail(c, 403, '只有作者或管理员可以发布草稿')
+    if (b.visibility === 'draft' && !canDraft) return fail(c, 403, '只有作者或管理员可以设为草稿')
+    if (doc.visibility === 'draft' && !canDraft) return fail(c, 403, '只有作者或管理员可以发布草稿')
     await p.db.run('UPDATE docs SET visibility = ? WHERE id = ?', b.visibility, doc.id)
   }
   if (b.locked !== undefined) {
@@ -206,8 +207,9 @@ docs.patch('/docs/:id', requireUser, rateLimit('write'), async (c) => {
   if (b.parentId !== undefined || b.sort !== undefined) {
     const parentId = b.parentId === null || b.parentId === '' ? null : String(b.parentId ?? doc.parent_id ?? '') || null
     if (parentId) {
-      const target = await loadDoc(c, parentId, 'edit')
+      const target = await loadDoc(c, parentId, 'read')
       if (target.res) return target.res
+      if (!canAddChild(user, target.chain)) return fail(c, 403, '不能移动到该文档下')
       if (target.doc.collection_id !== doc.collection_id) return fail(c, 400, '不能移动到其他集合')
       if (target.chain.some((n) => n.id === doc.id)) return fail(c, 400, '不能移动到自己的子文档下')
     }
@@ -219,12 +221,11 @@ docs.patch('/docs/:id', requireUser, rateLimit('write'), async (c) => {
 })
 
 docs.delete('/docs/:id', requireUser, rateLimit('write'), async (c) => {
-  const r = await loadDoc(c, c.req.param('id'), 'read')
+  const r = await loadDoc(c, c.req.param('id'), 'edit')
   if (r.res) return r.res
   const user = c.var.user!
-  if (user.role !== 'admin' && user.id !== r.doc.author_id) return fail(c, 403, '只有作者或管理员可以删除')
   const childCount = await c.var.p.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM docs WHERE parent_id = ?', r.doc.id)
-  if (childCount?.n && user.role !== 'admin') return fail(c, 400, '请先删除或移走子文档')
+  if (childCount?.n && user.role !== 'admin') return fail(c, 400, '请先删除或移走子文档（只有管理员可以连同子文档一起删除）')
   await c.var.p.db.run('DELETE FROM docs WHERE id = ?', r.doc.id)
   await c.var.p.cache.purge(docCacheKeys(r.doc.id))
   return c.json({ ok: true })

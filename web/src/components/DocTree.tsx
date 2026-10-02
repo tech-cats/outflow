@@ -6,14 +6,17 @@ type DropPos = 'before' | 'inside' | 'after'
 interface Props {
   docs: DocMeta[]
   activeId?: string
-  canWrite: boolean
+  /** 能否在该文档下新建子文档 */
+  canAdd(d: DocMeta): boolean
+  /** 能否拖动该文档 */
+  canMove(d: DocMeta): boolean
   onOpen(id: string): void
   onAddChild(parentId: string | null): void
   onChanged(): void
 }
 
 /** 侧边栏文档树：拖到行的上/下 1/4 处为同级排序，拖到中间为设为子文档 */
-export function DocTree({ docs, activeId, canWrite, onOpen, onAddChild, onChanged }: Props) {
+export function DocTree({ docs, activeId, canAdd, canMove, onOpen, onAddChild, onChanged }: Props) {
   const [drag, setDrag] = useState<string | null>(null)
   const [over, setOver] = useState<{ id: string; pos: DropPos } | null>(null)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
@@ -79,7 +82,7 @@ export function DocTree({ docs, activeId, canWrite, onOpen, onAddChild, onChange
             <li key={d.id}>
               <div
                 className={`row tree-row${d.id === activeId ? ' active' : ''}${o ? ` drop-${o}` : ''}`}
-                draggable={canWrite}
+                draggable={canMove(d)}
                 onDragStart={(e) => {
                   setDrag(d.id)
                   e.dataTransfer.effectAllowed = 'move'
@@ -118,7 +121,7 @@ export function DocTree({ docs, activeId, canWrite, onOpen, onAddChild, onChange
                 </span>
                 <span className="tree-title">{d.title || '无标题'}</span>
                 {d.visibility !== 'public' && <span className={`dot ${d.visibility}`} title={d.visibility} />}
-                {canWrite && (
+                {canAdd(d) && (
                   <button
                     className="tree-add"
                     title="添加子文档"

@@ -1,8 +1,9 @@
 import type { Context, MiddlewareHandler } from 'hono'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import type { GeoScope } from '../config'
+import { hasRole } from '../core/access'
 import { GEO_SCOPES, getGeoRules, isAllowed } from '../core/geo'
-import type { AppEnv, RateBucket } from '../types'
+import type { AppEnv, RateBucket, Role } from '../types'
 
 export function fail(c: Context, status: ContentfulStatusCode, error: string, extra: Record<string, unknown> = {}) {
   return c.json({ error, ...extra }, status)
@@ -28,11 +29,17 @@ export const requireUser: MiddlewareHandler<AppEnv> = async (c, next) => {
   await next()
 }
 
-export const requireAdmin: MiddlewareHandler<AppEnv> = async (c, next) => {
-  if (!c.var.user) return fail(c, 401, '请先登录')
-  if (c.var.user.role !== 'admin') return fail(c, 403, '需要管理员权限')
-  await next()
+const ROLE_LABEL: Record<Role, string> = { member: '成员', contributor: '贡献者', editor: '编辑', admin: '管理员' }
+
+export function requireRole(role: Role): MiddlewareHandler<AppEnv> {
+  return async (c, next) => {
+    if (!c.var.user) return fail(c, 401, '请先登录')
+    if (!hasRole(c.var.user, role)) return fail(c, 403, `需要${ROLE_LABEL[role]}及以上权限`)
+    await next()
+  }
 }
+
+export const requireAdmin = requireRole('admin')
 
 export async function body<T = Record<string, unknown>>(c: Context): Promise<Partial<T>> {
   try {

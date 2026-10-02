@@ -1,6 +1,6 @@
 import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
-import { VIS_HINT, VIS_LABEL, api, createDoc, type Collection, type Visibility } from '../api'
+import { VIS_HINT, VIS_LABEL, api, createDoc, hasRole, type Collection, type Visibility } from '../api'
 import { Topbar } from '../components/Topbar'
 import { useSession } from '../session'
 
@@ -29,6 +29,7 @@ export function NewPage() {
       location.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}`
       return
     }
+    if (!hasRole(user, 'contributor')) return
     const q = new URLSearchParams(location.search)
     const col = q.get('collection')
     if (col && !started.current) {
@@ -56,6 +57,7 @@ export function NewPage() {
       <main className="container" style={{ maxWidth: 640 }}>
         <h1 style={{ fontSize: 22 }}>新建文档</h1>
         {error && <div className="form-error">{error}</div>}
+        {user && !hasRole(user, 'contributor') && <div className="card empty">你目前只能阅读和评论。如需写文档，请联系管理员调整角色。</div>}
         {collections && collections.length > 0 && (
           <>
             <p className="muted">选择要放入的集合：</p>
@@ -69,7 +71,8 @@ export function NewPage() {
             </div>
           </>
         )}
-        {collections && (
+        {collections && collections.length === 0 && !hasRole(user, 'editor') && <p className="muted">还没有任何集合，请联系编辑或管理员创建。</p>}
+        {collections && hasRole(user, 'editor') && (
           <form className="card form" style={{ marginTop: 24 }} onSubmit={createCollection}>
             <strong>{collections.length ? '或者新建一个集合' : '先创建一个集合'}</strong>
             <input className="input" placeholder="集合名称，如「课程笔记」" required maxLength={60} value={name} onChange={(e) => setName(e.target.value)} />

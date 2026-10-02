@@ -1,4 +1,4 @@
-import { api } from '../api'
+import { api, hasRole } from '../api'
 import { useSession } from '../session'
 import { toggleTheme } from '../theme'
 
@@ -22,9 +22,11 @@ export function Topbar({ children }: { children?: React.ReactNode }) {
         </button>
         {user ? (
           <>
-            <a className="btn btn-primary btn-sm" href="/new">
-              写文档
-            </a>
+            {hasRole(user, 'contributor') && (
+              <a className="btn btn-primary btn-sm" href="/new">
+                写文档
+              </a>
+            )}
             {user.role === 'admin' && <a href="/admin">管理</a>}
             <span className="muted">{user.name}</span>
             <button
@@ -49,3 +51,4 @@ export function Topbar({ children }: { children?: React.ReactNode }) {
     </header>
   )
 }
+

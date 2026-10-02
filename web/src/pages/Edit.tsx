@@ -9,7 +9,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { WebsocketProvider } from 'y-websocket'
 import * as Y from 'yjs'
-import { ApiError, VIS_HINT, VIS_LABEL, api, createDoc, formatTime, type DocMeta, type User, type Visibility } from '../api'
+import { ApiError, VIS_HINT, VIS_LABEL, api, createDoc, formatTime, hasRole, type DocMeta, type User, type Visibility } from '../api'
 import { DocTree } from '../components/DocTree'
 import { Toolbar } from '../components/Toolbar'
 import { Topbar } from '../components/Topbar'
@@ -20,7 +20,14 @@ interface DocDetail {
   collection: { id: string; name: string }
   breadcrumbs: { id: string; title: string }[]
   canEdit: boolean
-  canManage: boolean
+  canDraft: boolean
+}
+
+/** 与服务端 canEditChain 对应（祖先可读性已由树接口保证） */
+function canEditDoc(user: User, d: DocMeta) {
+  if (user.role === 'admin') return true
+  if (d.locked) return false
+  return hasRole(user, 'editor') || (hasRole(user, 'contributor') && d.authorId === user.id)
 }
 
 function colorFor(id: string) {
@@ -100,14 +107,17 @@ export function EditPage({ id }: { id: string }) {
             <a href={`/c/${detail.collection.id}`} style={{ color: 'inherit' }}>
               {detail.collection.name}
             </a>
-            <button className="tree-add visible" title="新建顶级文档" onClick={() => addChild(null)}>
-              +
-            </button>
+            {hasRole(user, 'contributor') && (
+              <button className="tree-add visible" title="新建顶级文档" onClick={() => addChild(null)}>
+                +
+              </button>
+            )}
           </h3>
           <DocTree
             docs={tree}
             activeId={id}
-            canWrite
+            canAdd={(d) => hasRole(user, 'contributor') && (!d.locked || user.role === 'admin')}
+            canMove={(d) => canEditDoc(user, d)}
             onOpen={(nid) => navigate({ to: '/edit/$id', params: { id: nid } })}
             onAddChild={addChild}
             onChanged={refreshTree}
@@ -306,7 +316,7 @@ function DocHeader(props: {
                   <button
                     key={v}
                     className={`menu-item${doc.visibility === v ? ' on' : ''}`}
-                    disabled={!detail.canEdit || ((v === 'draft' || doc.visibility === 'draft') && !detail.canManage)}
+                    disabled={!detail.canEdit || ((v === 'draft' || doc.visibility === 'draft') && !detail.canDraft)}
                     onClick={() => patch({ visibility: v })}
                   >
                     <span>{VIS_LABEL[v]}</span>
@@ -322,7 +332,7 @@ function DocHeader(props: {
                 <a className="menu-item" href={`/api/docs/${doc.id}/export.md`}>
                   导出 Markdown
                 </a>
-                {detail.canManage && (
+                {detail.canEdit && (
                   <button className="menu-item danger" onClick={remove}>
                     删除文档
                   </button>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { VIS_LABEL, api, formatTime, type Collection, type GeoScope, type Role, type Visibility } from '../api'
+import { ROLES, ROLE_LABEL, VIS_LABEL, api, formatTime, type Collection, type GeoScope, type Role, type Visibility } from '../api'
 import { Topbar } from '../components/Topbar'
 import { useSession } from '../session'
 
@@ -143,8 +143,11 @@ function Users({ selfId }: { selfId: string }) {
             <td className="muted small">{formatTime(u.createdAt)}</td>
             <td>
               <select className="input input-sm" value={u.role} disabled={u.id === selfId} onChange={(e) => patch(u.id, { role: e.target.value })}>
-                <option value="member">成员</option>
-                <option value="admin">管理员</option>
+                {ROLES.map((r) => (
+                  <option key={r} value={r}>
+                    {ROLE_LABEL[r]}
+                  </option>
+                ))}
               </select>
             </td>
             <td>

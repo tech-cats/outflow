@@ -61,7 +61,7 @@ export interface Platform {
   clientCountry(req: Request, rawEnv: unknown): string | null
 }
 
-export type Role = 'admin' | 'member'
+export type Role = 'member' | 'contributor' | 'editor' | 'admin'
 export type Visibility = 'public' | 'protected' | 'draft'
 
 export interface User {

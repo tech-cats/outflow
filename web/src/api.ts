@@ -22,7 +22,14 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
   return data as T
 }
 
-export type Role = 'admin' | 'member'
+export type Role = 'member' | 'contributor' | 'editor' | 'admin'
+export const ROLES: Role[] = ['member', 'contributor', 'editor', 'admin']
+export const ROLE_LABEL: Record<Role, string> = { member: '成员', contributor: '贡献者', editor: '编辑', admin: '管理员' }
+
+/** 角色逐级包含，与 server/src/core/access.ts 保持一致 */
+export function hasRole(user: User | null | undefined, role: Role): boolean {
+  return !!user && ROLES.indexOf(user.role) >= ROLES.indexOf(role)
+}
 export type GeoScope = 'register' | 'login'
 export type Visibility = 'public' | 'protected' | 'draft'
 
