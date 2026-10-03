@@ -5,7 +5,7 @@ main = "src/entry/worker.ts"
 compatibility_date = "2026-09-01"
 compatibility_flags = ["nodejs_compat"]
 
-# 由 scripts/setup-cf.mjs 自动填写 database_id；同一账号部署多个站点时请修改 database_name 与 bucket_name
+# 由 scripts/setup-cf.mjs 自动填写 database_id；同一账号部署多个站点时请修改 database_name、bucket_name 与下方限流的 namespace_id
 [[d1_databases]]
 binding = "DB"
 database_name = "outflow"
@@ -30,7 +30,7 @@ binding = "ASSETS"
 not_found_handling = "single-page-application"
 run_worker_first = true
 
-# 限流：period 只能是 10 或 60 秒
+# 限流：period 只能是 10 或 60 秒；同一账号部署多个站点时 namespace_id 也要各不相同，否则会共用计数
 [[ratelimits]]
 name = "RL_AUTH"
 namespace_id = "1001"
