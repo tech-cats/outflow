@@ -32,6 +32,10 @@ function pluginAssets(): Plugin {
       outDir = resolve(c.root, c.build.outDir)
     },
     configureServer(server) {
+      // 插件列表在启动时读取；增删插件后重新生成 plugins.gen.json 会触发重启，否则新插件的资源和 fs.allow 都不会生效
+      server.watcher.add(genPath)
+      const onGen = (f: string) => f === genPath && void server.restart()
+      server.watcher.on('add', onGen).on('change', onGen)
       server.middlewares.use((req, res, next) => {
         const m = /^\/plugins\/([a-z0-9-]+)\/(.+)$/.exec(decodeURIComponent((req.url ?? '').split('?')[0]))
         const p = m && outflowPlugins.find((x) => x.id === m[1])
