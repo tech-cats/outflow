@@ -15,7 +15,7 @@ import { uploadApi, uploadFiles } from './routes/uploads'
 import type { AppEnv, Platform } from './types'
 
 // 只有这些路径由服务端处理，其余交给静态资源（SPA）
-const DYNAMIC = /^\/(api\/|c\/|d\/|uploads\/|search$|sitemap\.xml$|robots\.txt$|$)/
+const DYNAMIC = /^\/(api\/|c$|c\/|d\/|uploads\/|search$|sitemap\.xml$|robots\.txt$|$)/
 
 export function createApp(opts: {
   getPlatform(c: Context<AppEnv>): Platform

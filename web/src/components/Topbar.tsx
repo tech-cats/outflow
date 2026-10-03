@@ -23,6 +23,7 @@ export function Topbar({ children }: { children?: React.ReactNode }) {
         <button className="theme-toggle" title="切换深色/浅色" aria-label="切换深色/浅色" onClick={toggleTheme}>
           ◐
         </button>
+        <a href="/c">全部文档</a>
         {pluginNav.map((n) => (
           <a key={n.href} href={n.href}>
             {n.label}

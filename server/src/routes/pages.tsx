@@ -6,6 +6,7 @@ import { SESSION_COOKIE } from '../core/auth'
 import { listComments } from '../core/comments'
 import { mentionNames } from '../core/notify'
 import { searchDocs } from '../core/search'
+import { getHomeDocId } from '../core/site'
 import { escapeHtml, jsonToHtml } from '../lib/prosemirror'
 import type { AppEnv, PMNode } from '../types'
 import { renderDocSections } from '../plugins/host'
@@ -54,75 +55,146 @@ function layoutProps(c: Context<AppEnv>) {
 
 pages.get('/', rateLimit('read'), (c) =>
   cached(c, '/', async () => {
-    const db = c.var.p.db
-    const [collections, all] = await Promise.all([
-      db.all<{ id: string; name: string; description: string }>('SELECT id, name, description FROM collections ORDER BY sort, created_at'),
-      db.all<TreeRow>('SELECT id, parent_id, title, visibility, author_id, collection_id, updated_at FROM docs ORDER BY sort, created_at'),
-    ])
-    const readable = filterReadable(c.var.user, all)
-    const recent = [...readable].sort((a, b) => b.updated_at - a.updated_at).slice(0, 10)
-    const colName = new Map(collections.map((x) => [x.id, x.name]))
-    const res = await c.html(
-      <Layout {...layoutProps(c)} title="" description={`${c.var.p.config.appName} 知识库`}>
-        <main class="container">
-          {collections.length === 0 && (
-            <div class="card empty">
-              还没有任何集合。
-              {hasRole(c.var.user, 'editor') ? <a href="/new">创建第一个集合</a> : !c.var.user && <a href="/login">登录后开始创作</a>}
-            </div>
-          )}
-          <div class="grid">
-            {collections.map((col) => {
-              const top = readable.filter((d) => d.collection_id === col.id && !d.parent_id)
-              return (
-                <section class="card">
-                  <h2 style="margin:0 0 4px;font-size:18px">
-                    <a href={`/c/${col.id}`} style="color:inherit">
-                      {col.name}
-                    </a>
-                  </h2>
-                  {col.description && <p class="muted small" style="margin:0 0 10px">{col.description}</p>}
-                  <ul class="list small">
-                    {top.slice(0, 6).map((d) => (
-                      <li style="padding:6px 0">
-                        <a href={`/d/${d.id}`}>{d.title || '无标题'}</a>
-                      </li>
-                    ))}
-                    {top.length === 0 && <li class="muted">暂无文档</li>}
-                  </ul>
-                  {top.length > 6 && (
-                    <a class="small" href={`/c/${col.id}`}>
-                      查看全部 {top.length} 篇 →
-                    </a>
-                  )}
-                </section>
-              )
-            })}
-          </div>
-          {recent.length > 0 && (
-            <section style="margin-top:40px">
-              <h2 style="font-size:18px">最近更新</h2>
-              <ul class="list">
-                {recent.map((d) => (
-                  <li style="display:flex;gap:12px;align-items:baseline">
-                    <a href={`/d/${d.id}`} style="flex:1">
-                      {d.title || '无标题'}
-                    </a>
-                    <span class="muted small">{colName.get(d.collection_id)}</span>
-                    <span class="muted small">
-                      <Time ts={d.updated_at} />
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-        </main>
-      </Layout>,
-    )
+    const res = (await renderHomeDoc(c)) ?? (await renderIndex(c, ''))
     return { res, cacheable: true }
   }),
 )
+
+pages.get('/c', rateLimit('read'), (c) => cached(c, '/c', async () => ({ res: await renderIndex(c, '全部文档'), cacheable: true })))
+
+async function readableDocs(c: Context<AppEnv>) {
+  return filterReadable(
+    c.var.user,
+    await c.var.p.db.all<TreeRow>('SELECT id, parent_id, title, visibility, author_id, collection_id, updated_at FROM docs ORDER BY sort, created_at'),
+  )
+}
+
+function RecentList({ docs, colName }: { docs: TreeRow[]; colName: Map<string, string> }) {
+  return (
+    <ul class="list">
+      {docs.map((d) => (
+        <li style="display:flex;gap:12px;align-items:baseline">
+          <a href={`/d/${d.id}`} style="flex:1">
+            {d.title || '无标题'}
+          </a>
+          <span class="muted small">{colName.get(d.collection_id)}</span>
+          <span class="muted small">
+            <Time ts={d.updated_at} />
+          </span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/** 管理员指定的首页文档：直接展示内容，不显示标题和元信息。不存在或无权阅读时返回 null */
+async function renderHomeDoc(c: Context<AppEnv>): Promise<Response | null> {
+  const p = c.var.p
+  const user = c.var.user
+  const homeId = await getHomeDocId(p)
+  if (!homeId) return null
+  const doc = await p.db.get<{ id: string; content: string | null; text: string }>('SELECT id, content, text FROM docs WHERE id = ?', homeId)
+  if (!doc) return null
+  const chain = await loadChain(p.db, doc.id)
+  if (!chainReadable(user, chain)) return null
+  const [collections, readable] = await Promise.all([
+    p.db.all<{ id: string; name: string }>('SELECT id, name FROM collections'),
+    readableDocs(c),
+  ])
+  const recent = readable
+    .filter((d) => d.id !== doc.id)
+    .sort((a, b) => b.updated_at - a.updated_at)
+    .slice(0, 5)
+  const html = doc.content ? jsonToHtml(JSON.parse(doc.content) as PMNode) : ''
+  const appName = p.config.appName
+  return await c.html(
+    <Layout {...layoutProps(c)} title="" description={doc.text.slice(0, 160).replace(/\s+/g, ' ') || appName} hideSearch>
+      <main class="container home">
+        <form class="home-search" action="/search" method="get">
+          <input class="input" type="search" name="q" placeholder="搜索…" aria-label="搜索" />
+          <button class="btn btn-primary">搜索</button>
+        </form>
+        <div class="prose" dangerouslySetInnerHTML={{ __html: html }} />
+        {canEditChain(user, chain) && (
+          <div class="home-tools">
+            <a class="btn btn-sm" href={`/edit/${doc.id}`}>
+              编辑首页
+            </a>
+          </div>
+        )}
+        {recent.length > 0 && (
+          <section class="home-recent">
+            <h2>
+              最近更新
+              <a class="small" href="/c">
+                全部文档 →
+              </a>
+            </h2>
+            <RecentList docs={recent} colName={new Map(collections.map((x) => [x.id, x.name]))} />
+          </section>
+        )}
+      </main>
+    </Layout>,
+  )
+}
+
+/** 集合列表：未设置首页文档时作为首页，同时也是 /c 页面 */
+async function renderIndex(c: Context<AppEnv>, title: string): Promise<Response> {
+  const db = c.var.p.db
+  const [collections, readable] = await Promise.all([
+    db.all<{ id: string; name: string; description: string }>('SELECT id, name, description FROM collections ORDER BY sort, created_at'),
+    readableDocs(c),
+  ])
+  const recent = [...readable].sort((a, b) => b.updated_at - a.updated_at).slice(0, 10)
+  const colName = new Map(collections.map((x) => [x.id, x.name]))
+  return await c.html(
+    <Layout {...layoutProps(c)} title={title} description={`${c.var.p.config.appName} 知识库`}>
+      <main class="container">
+        {title && <h1 class="doc-title" style="margin-bottom:24px">{title}</h1>}
+        {collections.length === 0 && (
+          <div class="card empty">
+            还没有任何集合。
+            {hasRole(c.var.user, 'editor') ? <a href="/new">创建第一个集合</a> : !c.var.user && <a href="/login">登录后开始创作</a>}
+          </div>
+        )}
+        <div class="grid">
+          {collections.map((col) => {
+            const top = readable.filter((d) => d.collection_id === col.id && !d.parent_id)
+            return (
+              <section class="card">
+                <h2 style="margin:0 0 4px;font-size:18px">
+                  <a href={`/c/${col.id}`} style="color:inherit">
+                    {col.name}
+                  </a>
+                </h2>
+                {col.description && <p class="muted small" style="margin:0 0 10px">{col.description}</p>}
+                <ul class="list small">
+                  {top.slice(0, 6).map((d) => (
+                    <li style="padding:6px 0">
+                      <a href={`/d/${d.id}`}>{d.title || '无标题'}</a>
+                    </li>
+                  ))}
+                  {top.length === 0 && <li class="muted">暂无文档</li>}
+                </ul>
+                {top.length > 6 && (
+                  <a class="small" href={`/c/${col.id}`}>
+                    查看全部 {top.length} 篇 →
+                  </a>
+                )}
+              </section>
+            )
+          })}
+        </div>
+        {recent.length > 0 && (
+          <section style="margin-top:40px">
+            <h2 style="font-size:18px">最近更新</h2>
+            <RecentList docs={recent} colName={colName} />
+          </section>
+        )}
+      </main>
+    </Layout>,
+  )
+}
 
 /* ---------------- 集合页 ---------------- */
 

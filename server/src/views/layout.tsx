@@ -13,6 +13,8 @@ export interface LayoutProps {
   noindex?: boolean
   canonical?: string
   query?: string
+  /** 页面自带搜索框时隐藏顶栏搜索 */
+  hideSearch?: boolean
   children: Child
 }
 
@@ -42,14 +44,17 @@ export function Layout(props: LayoutProps) {
             <span class="brand-mark" />
             {props.appName}
           </a>
-          <form class="search" action="/search" method="get">
-            <input class="input" type="search" name="q" placeholder="搜索文档…" value={props.query ?? ''} />
-          </form>
+          {!props.hideSearch && (
+            <form class="search" action="/search" method="get">
+              <input class="input" type="search" name="q" placeholder="搜索文档…" value={props.query ?? ''} />
+            </form>
+          )}
           <div class="spacer" />
           <nav class="nav">
             <button class="theme-toggle" id="theme-toggle" title="切换深色/浅色" aria-label="切换深色/浅色">
               ◐
             </button>
+            <a href="/c">全部文档</a>
             {pluginNav.map((n) => (
               <a href={n.href}>{n.label}</a>
             ))}

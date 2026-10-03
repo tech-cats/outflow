@@ -5,8 +5,9 @@ import type { Platform } from '../types'
 
 const REVISION_INTERVAL_MS = 10 * 60 * 1000
 
+/** 文档变化时需要清除的缓存页面；首页可能展示这篇文档（首页文档、最近更新） */
 export function docCacheKeys(docId: string): string[] {
-  return [`/d/${docId}`]
+  return [`/d/${docId}`, '/', '/c']
 }
 
 export async function loadDocState(p: Platform, docId: string): Promise<Uint8Array | null> {

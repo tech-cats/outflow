@@ -90,6 +90,14 @@ button.link { background: none; border: 0; padding: 0; cursor: pointer; color: v
 .sidebar h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--fg-muted); margin: 4px 10px 8px; display: flex; align-items: center; justify-content: space-between; }
 .main { padding: 32px 48px 96px; min-width: 0; }
 .container { width: 100%; max-width: 900px; margin: 0 auto; padding: 32px 20px 96px; }
+.home { max-width: 760px; }
+.home-search { display: flex; gap: 8px; margin: 8px 0 28px; }
+.home-search .input { flex: 1; height: 46px; font-size: 16px; padding: 0 16px; border-radius: 10px; }
+.home-search .btn { height: 46px; padding: 0 20px; border-radius: 10px; }
+.home-tools { display: flex; justify-content: flex-end; margin-top: 24px; }
+.home-recent { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--border); }
+.home-recent h2 { font-size: 15px; display: flex; justify-content: space-between; align-items: baseline; margin: 0 0 8px; }
+.home-recent h2 a { font-weight: 400; }
 
 .tree, .tree ul { list-style: none; margin: 0; padding: 0; }
 .tree ul { padding-left: 14px; }

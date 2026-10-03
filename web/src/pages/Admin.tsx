@@ -14,7 +14,7 @@ interface AdminUser {
 
 export function AdminPage() {
   const { user, loading } = useSession()
-  const [tab, setTab] = useState<'rules' | 'geo' | 'users' | 'collections'>('rules')
+  const [tab, setTab] = useState<'site' | 'rules' | 'geo' | 'users' | 'collections'>('site')
 
   if (loading) return <Topbar />
   if (!user || user.role !== 'admin') {
@@ -35,6 +35,7 @@ export function AdminPage() {
         <div className="tabs">
           {(
             [
+              ['site', '站点'],
               ['rules', '注册白名单'],
               ['geo', '地域限制'],
               ['users', '用户'],
@@ -46,12 +47,65 @@ export function AdminPage() {
             </button>
           ))}
         </div>
+        {tab === 'site' && <Site />}
         {tab === 'rules' && <Rules />}
         {tab === 'users' && <Users selfId={user.id} />}
         {tab === 'collections' && <Collections />}
         {tab === 'geo' && <Geo />}
       </main>
     </>
+  )
+}
+
+function Site() {
+  const [info, setInfo] = useState<{ home: { id: string; title: string } | null; missing: boolean } | null>(null)
+  const [value, setValue] = useState('')
+  const [error, setError] = useState('')
+  const load = () => api<NonNullable<typeof info>>('/admin/site').then(setInfo)
+  useEffect(() => void load(), [])
+  const save = async (doc: string | null) => {
+    setError('')
+    try {
+      await api('/admin/site/home', { method: 'PUT', body: { doc } })
+      setValue('')
+      await load()
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+  if (!info) return null
+  return (
+    <section>
+      <h3 style={{ fontSize: 16 }}>首页</h3>
+      <p className="muted small">
+        指定一篇文档作为首页，首页会直接展示它的内容（不显示标题和作者），适合放最常用的信息和链接。未指定时首页显示集合列表；集合列表始终可以在
+        <a href="/c">「全部文档」</a>中找到。
+      </p>
+      <p>
+        当前：
+        {info.home ? (
+          <>
+            <a href={`/d/${info.home.id}`}>{info.home.title || '无标题'}</a>{' '}
+            <button className="btn btn-sm" onClick={() => save(null)}>
+              恢复集合列表
+            </button>
+          </>
+        ) : (
+          <span className="muted">{info.missing ? '原首页文档已被删除，显示集合列表' : '集合列表'}</span>
+        )}
+      </p>
+      <form
+        className="row-form"
+        onSubmit={(e) => {
+          e.preventDefault()
+          void save(value)
+        }}
+      >
+        <input className="input" placeholder="粘贴文档链接，如 https://…/d/xxxx" value={value} onChange={(e) => setValue(e.target.value)} required />
+        <button className="btn btn-primary">设为首页</button>
+      </form>
+      {error && <div className="form-error">{error}</div>}
+    </section>
   )
 }
 

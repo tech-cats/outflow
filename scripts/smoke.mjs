@@ -257,6 +257,19 @@ const daveCount = (await inbox(dave)).items.length
 await as(carol, `/api/comments/${ask}`, { method: 'DELETE' })
 check('删除评论后相关通知一并删除', (await inbox(dave)).items.length < daveCount)
 
+// ---- 首页文档 ----
+const isHome = (html) => html.includes('class="container home"')
+check('未设置首页文档时显示集合列表', !isHome((await call('/')).text) && (await call('/c')).text.includes('冒烟测试'))
+check('非管理员不能设置首页', (await as(bob, '/api/admin/site/home', { method: 'PUT', body: { doc: pub } })).status === 403)
+r = await call('/api/admin/site/home', { method: 'PUT', cookie: alice, body: { doc: `${BASE}/d/${pub}` } })
+check('管理员可用文档链接设置首页', r.status === 200)
+check('设置后匿名首页立即显示首页文档（缓存已清除）', isHome((await call('/')).text))
+check('首页文档模式下集合列表仍在 /c', (await call('/c')).text.includes('冒烟测试'))
+await call('/api/admin/site/home', { method: 'PUT', cookie: alice, body: { doc: prot } })
+check('首页文档无权阅读时回退到集合列表', !isHome((await call('/')).text) && isHome((await call('/', { cookie: alice })).text))
+await call('/api/admin/site/home', { method: 'PUT', cookie: alice, body: { doc: null } })
+check('取消首页文档', !isHome((await call('/', { cookie: alice })).text))
+
 // ---- 登录：渐进式验证码 ----
 let flags = []
 for (let i = 0; i < 4; i++) {

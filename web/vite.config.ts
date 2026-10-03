@@ -66,7 +66,7 @@ export default defineConfig({
     fs: { allow: [searchForWorkspaceRoot(process.cwd()), ...outflowPlugins.map((p) => p.dir)] },
     proxy: {
       '/api': { target, ws: true },
-      '^/(c|d|uploads)/': { target },
+      '^/(c|d|uploads)(/|$|\\?)': { target },
       '^/(search|sitemap\\.xml|robots\\.txt)?(\\?.*)?$': { target },
     },
   },
