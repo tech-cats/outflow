@@ -1,12 +1,14 @@
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import { ROLES } from '../core/access'
 import { getEmailRules } from '../core/auth'
 import { parseCountries, type GeoScope } from '../config'
 import { GEO_SCOPES, getGeoRules, isAllowed, setGeoRule } from '../core/geo'
+import { DEFAULT_MAIL_TEMPLATE, MAIL_LIMITS, MAIL_PLACEHOLDERS, checkMailTemplate, getMailTemplate, renderMail, setMailTemplate, type MailTemplate } from '../core/mail-template'
 import { HOME_DOC_ID, createHomeDoc } from '../core/site'
 import { normalizeRule } from '../lib/email-rules'
 import type { AppEnv, Role } from '../types'
-import { body, country, fail, requireAdmin } from './util'
+import { body, country, fail, rateLimit, requireAdmin } from './util'
 
 const admin = new Hono<AppEnv>()
 admin.use('*', requireAdmin)
@@ -87,6 +89,59 @@ admin.post('/site/home', async (c) => {
   const r = await createHomeDoc(c.var.p, c.var.user!.id)
   if (r === 'no-collection') return fail(c, 400, '请先创建一个集合')
   return c.json({ ok: true })
+})
+
+/* ---------------- 验证码邮件模板 ---------------- */
+
+const templateFrom = (b: Record<string, unknown>): MailTemplate | null =>
+  typeof b.subject === 'string' && typeof b.body === 'string' ? { subject: b.subject, body: b.body.replace(/\r\n/g, '\n') } : null
+
+const sampleVars = (c: Context<AppEnv>) => ({
+  app: c.var.p.config.appName,
+  action: '注册',
+  code: '123456',
+  url: c.var.p.config.appUrl || new URL(c.req.url).origin,
+})
+
+admin.get('/mail-template', async (c) =>
+  c.json({ ...(await getMailTemplate(c.var.p)), defaults: DEFAULT_MAIL_TEMPLATE, placeholders: MAIL_PLACEHOLDERS, limits: MAIL_LIMITS }),
+)
+
+/** body: { subject, body } 保存；{ reset: true } 恢复默认 */
+admin.put('/mail-template', async (c) => {
+  const b = await body(c)
+  if (b.reset === true) {
+    await setMailTemplate(c.var.p, null)
+    return c.json({ ok: true })
+  }
+  const t = templateFrom(b)
+  if (!t) return fail(c, 400, '参数错误')
+  const err = checkMailTemplate(t)
+  if (err) return fail(c, 400, err)
+  await setMailTemplate(c.var.p, t)
+  return c.json({ ok: true })
+})
+
+/** 用示例数据渲染（未保存的）模板 */
+admin.post('/mail-template/preview', async (c) => {
+  const t = templateFrom(await body(c))
+  if (!t) return fail(c, 400, '参数错误')
+  return c.json({ ...renderMail(t, sampleVars(c)), error: checkMailTemplate(t) })
+})
+
+/** 把（未保存的）模板发一封测试邮件到自己的邮箱，用于检查发信配置 */
+admin.post('/mail-template/test', rateLimit('auth'), async (c) => {
+  const t = templateFrom(await body(c))
+  if (!t) return fail(c, 400, '参数错误')
+  const err = checkMailTemplate(t)
+  if (err) return fail(c, 400, err)
+  try {
+    await c.var.p.mailer.send({ to: c.var.user!.email, ...renderMail(t, sampleVars(c)) })
+  } catch (e) {
+    console.error('send test mail failed', e)
+    return fail(c, 502, `发送失败：${(e as Error).message}`)
+  }
+  return c.json({ ok: true, to: c.var.user!.email })
 })
 
 export default admin

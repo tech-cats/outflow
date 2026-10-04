@@ -1,6 +1,7 @@
 import { base64url, newId, randomBytes, randomDigits, sha256Hex, timingSafeEqual } from '../lib/crypto'
 import { isEmailAllowed } from '../lib/email-rules'
 import type { Platform, User } from '../types'
+import { getMailTemplate, renderMail } from './mail-template'
 
 export const SESSION_COOKIE = 'outflow_session'
 export const SESSION_TTL_MS = 30 * 24 * 3600 * 1000
@@ -120,12 +121,10 @@ export async function checkEmailCode(
   return null
 }
 
-export function codeMail(p: Platform, code: string, purpose: CodePurpose) {
+/** url：站点地址（未配置 APP_URL 时由调用方传入请求的 origin） */
+export async function codeMail(p: Platform, code: string, purpose: CodePurpose, url: string) {
   const action = purpose === 'register' ? '注册' : '重置密码'
-  const subject = `【${p.config.appName}】${action}验证码：${code}`
-  const text = `你的${action}验证码是 ${code}，10 分钟内有效。\n如果这不是你本人的操作，请忽略本邮件。`
-  const html = `<p>你的${action}验证码是：</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p><p style="color:#666">10 分钟内有效。如果这不是你本人的操作，请忽略本邮件。</p>`
-  return { subject, text, html }
+  return renderMail(await getMailTemplate(p), { app: p.config.appName, action, code, url })
 }
 
 /* ---------------- 登录失败计数（渐进式：先要求验证码，再临时锁定） ---------------- */

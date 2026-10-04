@@ -97,7 +97,139 @@ function Site() {
         </button>
       )}
       {error && <div className="form-error">{error}</div>}
+      <MailTemplateEditor />
     </section>
+  )
+}
+
+interface MailTemplateInfo {
+  subject: string
+  body: string
+  custom: boolean
+  placeholders: Record<string, string>
+  limits: { subject: number; body: number }
+}
+
+function MailTemplateEditor() {
+  const [info, setInfo] = useState<MailTemplateInfo | null>(null)
+  const [subject, setSubject] = useState('')
+  const [body, setBody] = useState('')
+  const [preview, setPreview] = useState<{ subject: string; html: string; error: string | null } | null>(null)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const load = async () => {
+    const t = await api<MailTemplateInfo>('/admin/mail-template')
+    setInfo(t)
+    setSubject(t.subject)
+    setBody(t.body)
+  }
+  useEffect(() => void load(), [])
+
+  // 预览由服务端用示例数据渲染，与实际发出的邮件一致
+  useEffect(() => {
+    if (!info) return
+    const t = setTimeout(() => {
+      api<{ subject: string; html: string; error: string | null }>('/admin/mail-template/preview', { method: 'POST', body: { subject, body } })
+        .then(setPreview)
+        .catch(() => {})
+    }, 300)
+    return () => clearTimeout(t)
+  }, [info, subject, body])
+
+  const run = async (fn: () => Promise<string>) => {
+    setBusy(true)
+    setMsg(null)
+    try {
+      setMsg({ ok: true, text: await fn() })
+    } catch (e) {
+      setMsg({ ok: false, text: (e as Error).message })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!info) return null
+  const dirty = subject !== info.subject || body !== info.body
+  return (
+    <>
+      <h3 style={{ fontSize: 16, marginTop: 32 }}>验证码邮件</h3>
+      <p className="muted small">
+        注册和重置密码时发送。可用占位符：
+        {Object.entries(info.placeholders).map(([k, label], i) => (
+          <span key={k}>
+            {i > 0 && '、'}
+            <code>{`{${k}}`}</code> {label}
+          </span>
+        ))}
+        。正文每行一段，单独一行的 <code>{'{code}'}</code> 会以大号字显示；正文必须包含 <code>{'{code}'}</code>。
+      </p>
+      <form
+        className="mail-tpl"
+        onSubmit={(e) => {
+          e.preventDefault()
+          void run(async () => {
+            await api('/admin/mail-template', { method: 'PUT', body: { subject, body } })
+            await load()
+            return '已保存'
+          })
+        }}
+      >
+        <label className="field">
+          <span>标题</span>
+          <input className="input" value={subject} maxLength={info.limits.subject} onChange={(e) => setSubject(e.target.value)} required />
+        </label>
+        <label className="field">
+          <span>正文</span>
+          <textarea className="input" rows={6} value={body} maxLength={info.limits.body} onChange={(e) => setBody(e.target.value)} required />
+        </label>
+        {preview && (
+          <div className="mail-preview">
+            <div className="muted small">预览（示例验证码 123456）</div>
+            <strong>{preview.subject}</strong>
+            <div dangerouslySetInnerHTML={{ __html: preview.html }} />
+          </div>
+        )}
+        {preview?.error && <div className="form-error">{preview.error}</div>}
+        <div className="row-form">
+          <button className="btn btn-primary" disabled={busy || !dirty || !!preview?.error}>
+            保存
+          </button>
+          <button
+            type="button"
+            className="btn"
+            disabled={busy || !!preview?.error}
+            title="用当前编辑的内容发一封测试邮件到你的邮箱，可用来检查发信配置"
+            onClick={() =>
+              run(async () => {
+                const r = await api<{ to: string }>('/admin/mail-template/test', { method: 'POST', body: { subject, body } })
+                return `测试邮件已发送到 ${r.to}`
+              })
+            }
+          >
+            发送测试邮件
+          </button>
+          {info.custom && (
+            <button
+              type="button"
+              className="btn"
+              disabled={busy}
+              onClick={() =>
+                confirm('恢复默认的邮件模板？') &&
+                run(async () => {
+                  await api('/admin/mail-template', { method: 'PUT', body: { reset: true } })
+                  await load()
+                  return '已恢复默认模板'
+                })
+              }
+            >
+              恢复默认
+            </button>
+          )}
+        </div>
+        {msg && <div className={msg.ok ? 'muted small' : 'form-error'}>{msg.text}</div>}
+      </form>
+    </>
   )
 }
 

@@ -76,7 +76,7 @@ auth.post('/auth/send-code', rateLimit('auth'), async (c) => {
   const r = await issueEmailCode(p, email, purpose)
   if (!r.ok) return fail(c, 429, r.error, { retryAfter: r.retryAfter })
   try {
-    await p.mailer.send({ to: email, ...codeMail(p, r.code, purpose) })
+    await p.mailer.send({ to: email, ...(await codeMail(p, r.code, purpose, p.config.appUrl || new URL(c.req.url).origin)) })
   } catch (err) {
     console.error('send mail failed', err)
     await p.db.run('DELETE FROM email_codes WHERE email = ? AND created_at >= ?', email, Date.now() - 60_000)

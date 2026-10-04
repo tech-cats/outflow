@@ -275,6 +275,17 @@ check('首页文档无权阅读时回退到集合列表', !isHome((await call('/
 await call('/api/docs/index', { method: 'DELETE', cookie: alice })
 check('删除首页文档后恢复集合列表', !isHome((await call('/', { cookie: alice })).text))
 
+// ---- 验证码邮件模板 ----
+const tpl = (body) => call('/api/admin/mail-template', { method: 'PUT', cookie: alice, body })
+check('非管理员不能修改邮件模板', (await as(bob, '/api/admin/mail-template', { method: 'PUT', body: { subject: 'x', body: '{code}' } })).status === 403)
+check('邮件正文必须包含 {code}', (await tpl({ subject: '{app}', body: '没有验证码' })).status === 400)
+r = await call('/api/admin/mail-template/preview', { cookie: alice, body: { subject: 'S {code}', body: '<b>{action}</b>\n{code}' } })
+check('邮件预览转义正文中的 HTML', r.json?.subject === 'S 123456' && r.json.html.includes('&lt;b&gt;注册&lt;/b&gt;') && r.json.html.includes('123456'))
+check('保存自定义邮件模板', (await tpl({ subject: '自定义标题 {app} {code}', body: '欢迎，验证码 {code}，站点 {url}' })).status === 200)
+await call('/api/auth/send-code', { body: { email: 'erin@pku.edu.cn', purpose: 'register' } })
+check('验证码邮件使用自定义模板', /to=erin@pku\.edu\.cn\n\s*subject: 自定义标题 \S+ \d{6}\n\s*欢迎，验证码 \d{6}，站点 http/.test(readFileSync(LOG, 'utf8')))
+check('恢复默认邮件模板', (await tpl({ reset: true })).status === 200 && (await call('/api/admin/mail-template', { cookie: alice })).json?.custom === false)
+
 // ---- 登录：渐进式验证码 ----
 let flags = []
 for (let i = 0; i < 4; i++) {
