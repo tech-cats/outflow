@@ -6,7 +6,7 @@ import { SESSION_COOKIE } from '../core/auth'
 import { listComments } from '../core/comments'
 import { mentionNames } from '../core/notify'
 import { searchDocs } from '../core/search'
-import { getHomeDocId } from '../core/site'
+import { HOME_DOC_ID } from '../core/site'
 import { escapeHtml, jsonToHtml } from '../lib/prosemirror'
 import type { AppEnv, PMNode } from '../types'
 import { renderDocSections } from '../plugins/host'
@@ -54,10 +54,7 @@ function layoutProps(c: Context<AppEnv>) {
 /* ---------------- 首页 ---------------- */
 
 pages.get('/', rateLimit('read'), (c) =>
-  cached(c, '/', async () => {
-    const res = (await renderHomeDoc(c)) ?? (await renderIndex(c, ''))
-    return { res, cacheable: true }
-  }),
+  cached(c, '/', async () => (await renderDoc(c, HOME_DOC_ID, true)) ?? { res: await renderIndex(c, ''), cacheable: true }),
 )
 
 pages.get('/c', rateLimit('read'), (c) => cached(c, '/c', async () => ({ res: await renderIndex(c, '全部文档'), cacheable: true })))
@@ -65,7 +62,10 @@ pages.get('/c', rateLimit('read'), (c) => cached(c, '/c', async () => ({ res: aw
 async function readableDocs(c: Context<AppEnv>) {
   return filterReadable(
     c.var.user,
-    await c.var.p.db.all<TreeRow>('SELECT id, parent_id, title, visibility, author_id, collection_id, updated_at FROM docs ORDER BY sort, created_at'),
+    await c.var.p.db.all<TreeRow>(
+      'SELECT id, parent_id, title, visibility, author_id, collection_id, updated_at FROM docs WHERE id != ? ORDER BY sort, created_at',
+      HOME_DOC_ID,
+    ),
   )
 }
 
@@ -87,58 +87,7 @@ function RecentList({ docs, colName }: { docs: TreeRow[]; colName: Map<string, s
   )
 }
 
-/** 管理员指定的首页文档：直接展示内容，不显示标题和元信息。不存在或无权阅读时返回 null */
-async function renderHomeDoc(c: Context<AppEnv>): Promise<Response | null> {
-  const p = c.var.p
-  const user = c.var.user
-  const homeId = await getHomeDocId(p)
-  if (!homeId) return null
-  const doc = await p.db.get<{ id: string; content: string | null; text: string }>('SELECT id, content, text FROM docs WHERE id = ?', homeId)
-  if (!doc) return null
-  const chain = await loadChain(p.db, doc.id)
-  if (!chainReadable(user, chain)) return null
-  const [collections, readable] = await Promise.all([
-    p.db.all<{ id: string; name: string }>('SELECT id, name FROM collections'),
-    readableDocs(c),
-  ])
-  const recent = readable
-    .filter((d) => d.id !== doc.id)
-    .sort((a, b) => b.updated_at - a.updated_at)
-    .slice(0, 5)
-  const html = doc.content ? jsonToHtml(JSON.parse(doc.content) as PMNode) : ''
-  const appName = p.config.appName
-  return await c.html(
-    <Layout {...layoutProps(c)} title="" description={doc.text.slice(0, 160).replace(/\s+/g, ' ') || appName} hideSearch>
-      <main class="container home">
-        <form class="home-search" action="/search" method="get">
-          <input class="input" type="search" name="q" placeholder="搜索…" aria-label="搜索" />
-          <button class="btn btn-primary">搜索</button>
-        </form>
-        <div class="prose" dangerouslySetInnerHTML={{ __html: html }} />
-        {canEditChain(user, chain) && (
-          <div class="home-tools">
-            <a class="btn btn-sm" href={`/edit/${doc.id}`}>
-              编辑首页
-            </a>
-          </div>
-        )}
-        {recent.length > 0 && (
-          <section class="home-recent">
-            <h2>
-              最近更新
-              <a class="small" href="/c">
-                全部文档 →
-              </a>
-            </h2>
-            <RecentList docs={recent} colName={new Map(collections.map((x) => [x.id, x.name]))} />
-          </section>
-        )}
-      </main>
-    </Layout>,
-  )
-}
-
-/** 集合列表：未设置首页文档时作为首页，同时也是 /c 页面 */
+/** 集合列表：没有首页文档时作为首页，同时也是 /c 页面 */
 async function renderIndex(c: Context<AppEnv>, title: string): Promise<Response> {
   const db = c.var.p.db
   const [collections, readable] = await Promise.all([
@@ -150,7 +99,11 @@ async function renderIndex(c: Context<AppEnv>, title: string): Promise<Response>
   return await c.html(
     <Layout {...layoutProps(c)} title={title} description={`${c.var.p.config.appName} 知识库`}>
       <main class="container">
-        {title && <h1 class="doc-title" style="margin-bottom:24px">{title}</h1>}
+        {title && (
+          <h1 class="doc-title" style="margin-bottom:24px">
+            {title}
+          </h1>
+        )}
         {collections.length === 0 && (
           <div class="card empty">
             还没有任何集合。
@@ -167,7 +120,11 @@ async function renderIndex(c: Context<AppEnv>, title: string): Promise<Response>
                     {col.name}
                   </a>
                 </h2>
-                {col.description && <p class="muted small" style="margin:0 0 10px">{col.description}</p>}
+                {col.description && (
+                  <p class="muted small" style="margin:0 0 10px">
+                    {col.description}
+                  </p>
+                )}
                 <ul class="list small">
                   {top.slice(0, 6).map((d) => (
                     <li style="padding:6px 0">
@@ -209,8 +166,9 @@ pages.get('/c/:id', rateLimit('read'), (c) =>
     const docs = filterReadable(
       c.var.user,
       await db.all<TreeRow>(
-        'SELECT id, parent_id, title, visibility, author_id, collection_id, updated_at FROM docs WHERE collection_id = ? ORDER BY sort, created_at',
+        'SELECT id, parent_id, title, visibility, author_id, collection_id, updated_at FROM docs WHERE collection_id = ? AND id != ? ORDER BY sort, created_at',
         col.id,
+        HOME_DOC_ID,
       ),
     )
     const res = await c.html(
@@ -238,116 +196,127 @@ pages.get('/c/:id', rateLimit('read'), (c) =>
 
 /* ---------------- 文档阅读页 ---------------- */
 
-pages.get('/d/:id', rateLimit('read'), (c) =>
-  cached(c, `/d/${c.req.param('id')}`, async () => {
-    const p = c.var.p
-    const user = c.var.user
-    const doc = await p.db.get<{
-      id: string
-      collection_id: string
-      title: string
-      content: string | null
-      text: string
-      author_id: string
-      updated_at: number
-      updated_by: string | null
-      locked: number
-    }>('SELECT id, collection_id, title, content, text, author_id, updated_at, updated_by, locked FROM docs WHERE id = ?', c.req.param('id'))
-    if (!doc) return { res: await notFound(c), cacheable: false }
-    const chain = await loadChain(p.db, doc.id)
-    if (!chainReadable(user, chain)) {
-      // 匿名访问受保护文档：提示登录；草稿等其他不可读情况一律 404，不暴露存在性
-      const needLogin = !user && chain.every((n) => n.visibility !== 'draft')
-      return { res: needLogin ? await loginRequired(c) : await notFound(c), cacheable: false }
-    }
-    const vis = effectiveVisibility(chain)
-    const canEdit = canEditChain(user, chain)
-    const [col, tree, editor, comments] = await Promise.all([
-      p.db.get<{ id: string; name: string }>('SELECT id, name FROM collections WHERE id = ?', doc.collection_id),
-      p.db.all<TreeRow>(
-        'SELECT id, parent_id, title, visibility, author_id, collection_id, updated_at FROM docs WHERE collection_id = ? ORDER BY sort, created_at',
-        doc.collection_id,
-      ),
-      p.db.get<{ name: string }>('SELECT name FROM users WHERE id = ?', doc.updated_by ?? doc.author_id),
-      // 评论只给登录用户看，匿名页面因此可以安全地进入缓存
-      user ? listComments(p.db, doc.id) : [],
-    ])
-    const names = await mentionNames(p, comments.map((x) => x.body))
-    const pluginHtml = await renderDocSections(c, { id: doc.id, title: doc.title })
-    const openNotes = comments.filter((x) => x.anchor && !x.parentId && !x.resolved).length
-    const readableTree = filterReadable(user, tree)
-    const titles = new Map(tree.map((d) => [d.id, d.title]))
-    const crumbs = chain.slice(1).reverse()
-    const html = doc.content ? jsonToHtml(JSON.parse(doc.content) as PMNode) : ''
-    const description = doc.text.slice(0, 160).replace(/\s+/g, ' ')
+pages.get('/d/:id', rateLimit('read'), async (c) => {
+  // 首页文档只在 / 展示，避免同一内容有两个地址
+  if (c.req.param('id') === HOME_DOC_ID) return c.redirect('/', 302)
+  return cached(c, `/d/${c.req.param('id')}`, async () => (await renderDoc(c, c.req.param('id'), false))!)
+})
 
-    const res = await c.html(
-      <Layout
-        {...layoutProps(c)}
-        title={doc.title || '无标题'}
-        description={description}
-        noindex={vis !== 'public'}
-        canonical={vis === 'public' ? `${baseUrl(c)}/d/${doc.id}` : undefined}
-      >
-        <div class="layout">
-          <aside class="sidebar">
-            <h3>
-              <a href={`/c/${col?.id}`} style="color:inherit">
-                {col?.name}
+/**
+ * 文档阅读页。home 为 true 时渲染首页文档：不显示面包屑；文档不存在或无权阅读时返回 null，由调用方显示集合列表。
+ */
+async function renderDoc(c: Context<AppEnv>, id: string, home: boolean): Promise<{ res: Response; cacheable: boolean } | null> {
+  const p = c.var.p
+  const user = c.var.user
+  const doc = await p.db.get<{
+    id: string
+    collection_id: string
+    title: string
+    content: string | null
+    text: string
+    author_id: string
+    updated_at: number
+    updated_by: string | null
+    locked: number
+  }>('SELECT id, collection_id, title, content, text, author_id, updated_at, updated_by, locked FROM docs WHERE id = ?', id)
+  if (!doc) return home ? null : { res: await notFound(c), cacheable: false }
+  const chain = await loadChain(p.db, doc.id)
+  if (!chainReadable(user, chain)) {
+    if (home) return null
+    // 匿名访问受保护文档：提示登录；草稿等其他不可读情况一律 404，不暴露存在性
+    const needLogin = !user && chain.every((n) => n.visibility !== 'draft')
+    return { res: needLogin ? await loginRequired(c) : await notFound(c), cacheable: false }
+  }
+  const vis = effectiveVisibility(chain)
+  const canEdit = canEditChain(user, chain)
+  const [col, tree, editor, comments] = await Promise.all([
+    p.db.get<{ id: string; name: string }>('SELECT id, name FROM collections WHERE id = ?', doc.collection_id),
+    p.db.all<TreeRow>(
+      'SELECT id, parent_id, title, visibility, author_id, collection_id, updated_at FROM docs WHERE collection_id = ? ORDER BY sort, created_at',
+      doc.collection_id,
+    ),
+    p.db.get<{ name: string }>('SELECT name FROM users WHERE id = ?', doc.updated_by ?? doc.author_id),
+    // 评论只给登录用户看，匿名页面因此可以安全地进入缓存
+    user ? listComments(p.db, doc.id) : [],
+  ])
+  const names = await mentionNames(
+    p,
+    comments.map((x) => x.body),
+  )
+  const pluginHtml = await renderDocSections(c, { id: doc.id, title: doc.title })
+  const openNotes = comments.filter((x) => x.anchor && !x.parentId && !x.resolved).length
+  const readableTree = filterReadable(user, tree)
+  const children = readableTree.filter((d) => d.parent_id === doc.id)
+  const titles = new Map(tree.map((d) => [d.id, d.title]))
+  const crumbs = chain.slice(1).reverse()
+  const html = doc.content ? jsonToHtml(JSON.parse(doc.content) as PMNode) : ''
+  const description = doc.text.slice(0, 160).replace(/\s+/g, ' ')
+
+  const res = await c.html(
+    <Layout
+      {...layoutProps(c)}
+      title={home ? '' : doc.title || '无标题'}
+      description={description}
+      noindex={vis !== 'public'}
+      canonical={vis === 'public' ? (home ? `${baseUrl(c)}/` : `${baseUrl(c)}/d/${doc.id}`) : undefined}
+    >
+      <main class="container" data-page={home ? 'home' : 'doc'}>
+        <article class="article">
+          {!home && (
+            <nav class="crumbs">
+              <a href={`/c/${col?.id}`}>{col?.name}</a>
+              {crumbs.map((n) => (
+                <>
+                  <span>/</span>
+                  <a href={`/d/${n.id}`}>{titles.get(n.id) || '无标题'}</a>
+                </>
+              ))}
+            </nav>
+          )}
+          <h1 class="doc-title">{doc.title || '无标题'}</h1>
+          <div class="doc-meta">
+            <VisBadge v={vis} />
+            {!!doc.locked && <span class="badge">已锁定</span>}
+            <span>
+              {editor?.name ?? '未知'} 更新于 <Time ts={doc.updated_at} />
+            </span>
+            <span class="actions">
+              <a class="btn btn-sm" href={`/api/docs/${doc.id}/export.md`}>
+                导出 Markdown
               </a>
-            </h3>
-            <Tree docs={readableTree} activeId={doc.id} />
-          </aside>
-          <main class="main">
-            <article class="article">
-              <nav class="crumbs">
-                <a href={`/c/${col?.id}`}>{col?.name}</a>
-                {crumbs.map((n) => (
-                  <>
-                    <span>/</span>
-                    <a href={`/d/${n.id}`}>{titles.get(n.id) || '无标题'}</a>
-                  </>
-                ))}
-              </nav>
-              <h1 class="doc-title">{doc.title || '无标题'}</h1>
-              <div class="doc-meta">
-                <VisBadge v={vis} />
-                {!!doc.locked && <span class="badge">已锁定</span>}
-                <span>
-                  {editor?.name ?? '未知'} 更新于 <Time ts={doc.updated_at} />
-                </span>
-                <span class="actions">
-                  <a class="btn btn-sm" href={`/api/docs/${doc.id}/export.md`}>
-                    导出 Markdown
-                  </a>
-                  {user && (
-                    <a class="btn btn-sm" href={`/edit/${doc.id}?comments=1`} title="选中文字即可添加批注">
-                      批注{openNotes > 0 && ` · ${openNotes}`}
-                    </a>
-                  )}
-                  {canEdit && (
-                    <a class="btn btn-primary btn-sm" href={`/edit/${doc.id}`}>
-                      编辑
-                    </a>
-                  )}
-                </span>
-              </div>
-              <div class="prose" dangerouslySetInnerHTML={{ __html: html || '<p class="muted">（空文档）</p>' }} />
-              {pluginHtml && <div dangerouslySetInnerHTML={{ __html: pluginHtml }} />}
-              {user && <Discussion docId={doc.id} comments={comments} names={names} userId={user.id} canModerate={hasRole(user, 'editor')} />}
-            </article>
-          </main>
-        </div>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){var v=${doc.updated_at},shown=false;setInterval(function(){if(shown||document.hidden)return;fetch('/api/docs/${doc.id}/version',{cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(d){if(d&&d.updatedAt>v){shown=true;var n=document.createElement('div');n.className='notice';n.innerHTML='文档已更新<a href="">刷新查看</a>';document.body.appendChild(n)}}).catch(function(){})},20000)})()`,
-          }}
-        />
-      </Layout>,
-    )
-    return { res, cacheable: vis === 'public' }
-  }),
-)
+              {user && (
+                <a class="btn btn-sm" href={`/edit/${doc.id}?comments=1`} title="选中文字即可添加批注">
+                  批注{openNotes > 0 && ` · ${openNotes}`}
+                </a>
+              )}
+              {canEdit && (
+                <a class="btn btn-primary btn-sm" href={`/edit/${doc.id}`}>
+                  编辑
+                </a>
+              )}
+            </span>
+          </div>
+          <div class="prose" dangerouslySetInnerHTML={{ __html: html || '<p class="muted">（空文档）</p>' }} />
+          {children.length > 0 && (
+            <section class="doc-children">
+              <h2>下级文档</h2>
+              <Tree docs={readableTree} rootId={doc.id} />
+            </section>
+          )}
+          {pluginHtml && <div dangerouslySetInnerHTML={{ __html: pluginHtml }} />}
+          <nav class="doc-foot">{home ? <a href="/c">全部文档 →</a> : <a href={`/c/${col?.id}`}>← {col?.name} 的全部文档</a>}</nav>
+          {user && <Discussion docId={doc.id} comments={comments} names={names} userId={user.id} canModerate={hasRole(user, 'editor')} />}
+        </article>
+      </main>
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `(function(){var v=${doc.updated_at},shown=false;setInterval(function(){if(shown||document.hidden)return;fetch('/api/docs/${doc.id}/version',{cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(d){if(d&&d.updatedAt>v){shown=true;var n=document.createElement('div');n.className='notice';n.innerHTML='文档已更新<a href="">刷新查看</a>';document.body.appendChild(n)}}).catch(function(){})},20000)})()`,
+        }}
+      />
+    </Layout>,
+  )
+  return { res, cacheable: vis === 'public' }
+}
 
 /* ---------------- 搜索 ---------------- */
 
@@ -382,7 +351,9 @@ pages.get('/search', rateLimit('read'), async (c) => {
 /* ---------------- SEO ---------------- */
 
 pages.get('/robots.txt', (c) =>
-  c.text(`User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /edit/\nDisallow: /admin\nDisallow: /search\nCrawl-delay: 2\nSitemap: ${baseUrl(c)}/sitemap.xml\n`),
+  c.text(
+    `User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /edit/\nDisallow: /admin\nDisallow: /search\nCrawl-delay: 2\nSitemap: ${baseUrl(c)}/sitemap.xml\n`,
+  ),
 )
 
 pages.get('/sitemap.xml', rateLimit('read'), async (c) => {
@@ -390,7 +361,7 @@ pages.get('/sitemap.xml', rateLimit('read'), async (c) => {
   const base = baseUrl(c)
   // 以匿名身份过滤：只有有效可见性为 public 的文档才进入 sitemap
   const urls = filterReadable(null, all)
-    .map((d) => `<url><loc>${escapeHtml(`${base}/d/${d.id}`)}</loc><lastmod>${new Date(d.updated_at).toISOString()}</lastmod></url>`)
+    .map((d) => `<url><loc>${escapeHtml(d.id === HOME_DOC_ID ? `${base}/` : `${base}/d/${d.id}`)}</loc><lastmod>${new Date(d.updated_at).toISOString()}</lastmod></url>`)
     .join('')
   return c.body(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls}</urlset>`, 200, {
     'Content-Type': 'application/xml; charset=utf-8',

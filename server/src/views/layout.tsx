@@ -13,8 +13,6 @@ export interface LayoutProps {
   noindex?: boolean
   canonical?: string
   query?: string
-  /** 页面自带搜索框时隐藏顶栏搜索 */
-  hideSearch?: boolean
   children: Child
 }
 
@@ -44,11 +42,9 @@ export function Layout(props: LayoutProps) {
             <span class="brand-mark" />
             {props.appName}
           </a>
-          {!props.hideSearch && (
-            <form class="search" action="/search" method="get">
-              <input class="input" type="search" name="q" placeholder="搜索文档…" value={props.query ?? ''} />
-            </form>
-          )}
+          <form class="search" action="/search" method="get">
+            <input class="input" type="search" name="q" placeholder="搜索文档…" value={props.query ?? ''} />
+          </form>
           <div class="spacer" />
           <nav class="nav">
             <button class="theme-toggle" id="theme-toggle" title="切换深色/浅色" aria-label="切换深色/浅色">
@@ -116,7 +112,8 @@ export interface TreeDoc {
   title: string
 }
 
-export function Tree({ docs, activeId }: { docs: TreeDoc[]; activeId?: string }) {
+/** rootId：只渲染该文档下的子树 */
+export function Tree({ docs, activeId, rootId }: { docs: TreeDoc[]; activeId?: string; rootId?: string }) {
   const children = new Map<string | null, TreeDoc[]>()
   for (const d of docs) {
     const k = d.parent_id && docs.some((x) => x.id === d.parent_id) ? d.parent_id : null
@@ -138,7 +135,7 @@ export function Tree({ docs, activeId }: { docs: TreeDoc[]; activeId?: string })
       </ul>
     )
   }
-  return <div class="tree">{render(null, 0)}</div>
+  return <div class="tree">{render(rootId ?? null, 0)}</div>
 }
 
 /** 服务端输出 UTC 时间，浏览器端再转换为本地时间 */

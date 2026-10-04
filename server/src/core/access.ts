@@ -1,3 +1,4 @@
+import { HOME_DOC_ID } from './site'
 import type { DB, Role, User, Visibility } from '../types'
 
 /**
@@ -76,7 +77,8 @@ export function canEditChain(user: User | null, chain: DocNode[]): boolean {
 
 /** 能否在该文档下新建子文档（子文档归新建者所有） */
 export function canAddChild(user: User | null, chain: DocNode[]): boolean {
-  if (!user || !hasRole(user, 'contributor') || !chainReadable(user, chain)) return false
+  // 首页文档不显示在文档树中，因此不允许有子文档
+  if (!user || chain[0].id === HOME_DOC_ID || !hasRole(user, 'contributor') || !chainReadable(user, chain)) return false
   return !chain[0].locked || user.role === 'admin'
 }
 

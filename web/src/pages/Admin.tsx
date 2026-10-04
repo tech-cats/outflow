@@ -58,17 +58,15 @@ export function AdminPage() {
 }
 
 function Site() {
-  const [info, setInfo] = useState<{ home: { id: string; title: string } | null; missing: boolean } | null>(null)
-  const [value, setValue] = useState('')
+  const [info, setInfo] = useState<{ home: { title: string; visibility: Visibility } | null } | null>(null)
   const [error, setError] = useState('')
   const load = () => api<NonNullable<typeof info>>('/admin/site').then(setInfo)
   useEffect(() => void load(), [])
-  const save = async (doc: string | null) => {
+  const create = async () => {
     setError('')
     try {
-      await api('/admin/site/home', { method: 'PUT', body: { doc } })
-      setValue('')
-      await load()
+      await api('/admin/site/home', { method: 'POST' })
+      location.href = '/edit/index'
     } catch (e) {
       setError((e as Error).message)
     }
@@ -78,32 +76,26 @@ function Site() {
     <section>
       <h3 style={{ fontSize: 16 }}>首页</h3>
       <p className="muted small">
-        指定一篇文档作为首页，首页会直接展示它的内容（不显示标题和作者），适合放最常用的信息和链接。未指定时首页显示集合列表；集合列表始终可以在
+        首页文档是一篇固定的文档，显示在网站首页，适合放最常用的信息和链接。它不出现在集合的文档树中。没有首页文档、或访客无权阅读它时，首页显示集合列表；集合列表始终可以在
         <a href="/c">「全部文档」</a>中找到。
       </p>
-      <p>
-        当前：
-        {info.home ? (
-          <>
-            <a href={`/d/${info.home.id}`}>{info.home.title || '无标题'}</a>{' '}
-            <button className="btn btn-sm" onClick={() => save(null)}>
-              恢复集合列表
-            </button>
-          </>
-        ) : (
-          <span className="muted">{info.missing ? '原首页文档已被删除，显示集合列表' : '集合列表'}</span>
-        )}
-      </p>
-      <form
-        className="row-form"
-        onSubmit={(e) => {
-          e.preventDefault()
-          void save(value)
-        }}
-      >
-        <input className="input" placeholder="粘贴文档链接，如 https://…/d/xxxx" value={value} onChange={(e) => setValue(e.target.value)} required />
-        <button className="btn btn-primary">设为首页</button>
-      </form>
+      {info.home ? (
+        <p className="row-form">
+          <span>
+            {info.home.title || '无标题'} <span className="muted small">（{VIS_LABEL[info.home.visibility]}）</span>
+          </span>
+          <a className="btn btn-sm" href="/">
+            查看
+          </a>
+          <a className="btn btn-primary btn-sm" href="/edit/index">
+            编辑
+          </a>
+        </p>
+      ) : (
+        <button className="btn btn-primary" onClick={create}>
+          创建首页文档
+        </button>
+      )}
       {error && <div className="form-error">{error}</div>}
     </section>
   )

@@ -37,7 +37,7 @@ async function call(path, { method, body, cookie, headers = {} } = {}) {
   try {
     json = JSON.parse(text)
   } catch {}
-  return { status: res.status, json, text, cookie: res.headers.get('set-cookie')?.split(';')[0] }
+  return { status: res.status, json, text, cookie: res.headers.get('set-cookie')?.split(';')[0], location: res.headers.get('location') }
 }
 
 const lastCode = (email) => {
@@ -258,17 +258,22 @@ await as(carol, `/api/comments/${ask}`, { method: 'DELETE' })
 check('删除评论后相关通知一并删除', (await inbox(dave)).items.length < daveCount)
 
 // ---- 首页文档 ----
-const isHome = (html) => html.includes('class="container home"')
-check('未设置首页文档时显示集合列表', !isHome((await call('/')).text) && (await call('/c')).text.includes('冒烟测试'))
-check('非管理员不能设置首页', (await as(bob, '/api/admin/site/home', { method: 'PUT', body: { doc: pub } })).status === 403)
-r = await call('/api/admin/site/home', { method: 'PUT', cookie: alice, body: { doc: `${BASE}/d/${pub}` } })
-check('管理员可用文档链接设置首页', r.status === 200)
-check('设置后匿名首页立即显示首页文档（缓存已清除）', isHome((await call('/')).text))
-check('首页文档模式下集合列表仍在 /c', (await call('/c')).text.includes('冒烟测试'))
-await call('/api/admin/site/home', { method: 'PUT', cookie: alice, body: { doc: prot } })
+const isHome = (html) => html.includes('data-page="home"')
+check('没有首页文档时显示集合列表', !isHome((await call('/')).text) && (await call('/c')).text.includes('冒烟测试'))
+check('非管理员不能创建首页文档', (await as(bob, '/api/admin/site/home', { method: 'POST' })).status === 403)
+check('管理员创建首页文档', (await call('/api/admin/site/home', { method: 'POST', cookie: alice })).status === 200)
+check('创建后匿名首页立即显示首页文档（缓存已清除）', isHome((await call('/')).text))
+r = await call('/d/index')
+check('/d/index 跳转到首页', r.status === 302 && r.location === '/')
+const homeCol = (await call('/api/docs/index', { cookie: alice })).json?.doc?.collectionId
+r = await call(`/api/collections/${homeCol}/tree`, { cookie: alice })
+check('首页文档不出现在文档树和集合列表中', homeCol && !r.json.docs.some((d) => d.id === 'index') && !(await call('/c', { cookie: alice })).text.includes('/d/index'))
+check('首页文档不能有子文档', (await call('/api/docs', { cookie: alice, body: { collectionId: homeCol, title: 'x', parentId: 'index' } })).status === 403)
+check('首页文档不能移动', (await call('/api/docs/index', { method: 'PATCH', cookie: alice, body: { parentId: pub } })).status === 400)
+await call('/api/docs/index', { method: 'PATCH', cookie: alice, body: { visibility: 'protected' } })
 check('首页文档无权阅读时回退到集合列表', !isHome((await call('/')).text) && isHome((await call('/', { cookie: alice })).text))
-await call('/api/admin/site/home', { method: 'PUT', cookie: alice, body: { doc: null } })
-check('取消首页文档', !isHome((await call('/', { cookie: alice })).text))
+await call('/api/docs/index', { method: 'DELETE', cookie: alice })
+check('删除首页文档后恢复集合列表', !isHome((await call('/', { cookie: alice })).text))
 
 // ---- 登录：渐进式验证码 ----
 let flags = []

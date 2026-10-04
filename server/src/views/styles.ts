@@ -89,15 +89,8 @@ button.link { background: none; border: 0; padding: 0; cursor: pointer; color: v
 .sidebar { border-right: 1px solid var(--border); background: var(--bg-soft); padding: 16px 10px; position: sticky; top: 52px; max-height: calc(100vh - 52px); overflow-y: auto; }
 .sidebar h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--fg-muted); margin: 4px 10px 8px; display: flex; align-items: center; justify-content: space-between; }
 .main { padding: 32px 48px 96px; min-width: 0; }
-.container { width: 100%; max-width: 900px; margin: 0 auto; padding: 32px 20px 96px; }
-.home { max-width: 760px; }
-.home-search { display: flex; gap: 8px; margin: 8px 0 28px; }
-.home-search .input { flex: 1; height: 46px; font-size: 16px; padding: 0 16px; border-radius: 10px; }
-.home-search .btn { height: 46px; padding: 0 20px; border-radius: 10px; }
-.home-tools { display: flex; justify-content: flex-end; margin-top: 24px; }
-.home-recent { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--border); }
-.home-recent h2 { font-size: 15px; display: flex; justify-content: space-between; align-items: baseline; margin: 0 0 8px; }
-.home-recent h2 a { font-weight: 400; }
+/* 所有阅读页共用同一个居中单栏，页面之间跳转时布局不变 */
+.container { width: 100%; max-width: 800px; margin: 0 auto; padding: 32px 20px 96px; }
 
 .tree, .tree ul { list-style: none; margin: 0; padding: 0; }
 .tree ul { padding-left: 14px; }
@@ -106,6 +99,11 @@ button.link { background: none; border: 0; padding: 0; cursor: pointer; color: v
 .tree a.active, .tree .row.active { background: var(--accent-soft); color: var(--accent); font-weight: 500; }
 
 .article { max-width: 760px; margin: 0 auto; }
+.doc-children { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--border); }
+.doc-children h2 { font-size: 15px; margin: 0 0 8px; }
+.doc-children .tree a { padding-left: 0; }
+.doc-foot { margin-top: 40px; font-size: 14px; }
+.doc-foot a { color: var(--fg-muted); }
 .crumbs { font-size: 13px; color: var(--fg-muted); margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
 .crumbs a { color: var(--fg-muted); }
 .doc-title { font-size: 34px; line-height: 1.25; font-weight: 700; margin: 0 0 10px; letter-spacing: -.3px; word-break: break-word; }

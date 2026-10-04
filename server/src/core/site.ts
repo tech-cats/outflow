@@ -1,27 +1,28 @@
 import type { Platform } from '../types'
 
 /**
- * 站点级设置（保存在 settings 表）。
- * site.home：作为首页内容的文档 id；未设置、文档已删除或当前用户无权阅读时，首页显示集合列表。
+ * 首页文档：固定 id 的一篇文档，存在且当前用户可读时显示在 /，否则首页显示集合列表。
+ * 它不出现在集合的文档树和列表中，也不能有子文档。普通文档 id 是 12 位随机串，不会与它冲突。
  */
-const HOME_KEY = 'site.home'
+export const HOME_DOC_ID = 'index'
 
-export async function getHomeDocId(p: Platform): Promise<string | null> {
-  const row = await p.db.get<{ value: string }>('SELECT value FROM settings WHERE key = ?', HOME_KEY)
-  return row?.value || null
-}
-
-export async function setHomeDocId(p: Platform, docId: string | null) {
-  if (!docId) {
-    await p.db.run('DELETE FROM settings WHERE key = ?', HOME_KEY)
-  } else {
-    await p.db.run(
-      `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-      HOME_KEY,
-      docId,
-      Date.now(),
-    )
-  }
+/** 创建首页文档，归属排序最靠前的集合（只影响权限继承，不会显示在该集合中） */
+export async function createHomeDoc(p: Platform, userId: string): Promise<'ok' | 'exists' | 'no-collection'> {
+  if (await p.db.get('SELECT 1 FROM docs WHERE id = ?', HOME_DOC_ID)) return 'exists'
+  const col = await p.db.get<{ id: string }>('SELECT id FROM collections ORDER BY sort, created_at LIMIT 1')
+  if (!col) return 'no-collection'
+  const now = Date.now()
+  await p.db.run(
+    `INSERT INTO docs (id, collection_id, parent_id, title, visibility, author_id, sort, created_at, updated_at, updated_by)
+     VALUES (?, ?, NULL, ?, 'public', ?, 0, ?, ?, ?)`,
+    HOME_DOC_ID,
+    col.id,
+    '首页',
+    userId,
+    now,
+    now,
+    userId,
+  )
   await p.cache.purge(['/'])
+  return 'ok'
 }

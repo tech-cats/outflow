@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { Context } from 'hono'
 import { VISIBILITIES, canAddChild, canEditChain, canToggleDraft, chainReadable, effectiveVisibility, filterReadable, loadChain, type DocNode } from '../core/access'
 import { docCacheKeys } from '../core/docs'
+import { HOME_DOC_ID } from '../core/site'
 import { searchDocs } from '../core/search'
 import { newId } from '../lib/crypto'
 import { jsonToHtml, jsonToMarkdown } from '../lib/prosemirror'
@@ -105,7 +106,8 @@ docs.get('/collections/:id/tree', rateLimit('read'), async (c) => {
     `SELECT ${DOC_COLS} FROM docs WHERE collection_id = ? ORDER BY sort, created_at`,
     c.req.param('id'),
   )
-  return c.json({ docs: filterReadable(c.var.user, rows).map(docJson) })
+  // 首页文档虽然归属某个集合，但不出现在文档树中
+  return c.json({ docs: filterReadable(c.var.user, rows.filter((d) => d.id !== HOME_DOC_ID)).map(docJson) })
 })
 
 /* ---------------- 文档 ---------------- */
@@ -205,6 +207,7 @@ docs.patch('/docs/:id', requireUser, rateLimit('write'), async (c) => {
     await p.db.run('UPDATE docs SET locked = ? WHERE id = ?', b.locked ? 1 : 0, doc.id)
   }
   if (b.parentId !== undefined || b.sort !== undefined) {
+    if (doc.id === HOME_DOC_ID) return fail(c, 400, '首页文档不能移动')
     const parentId = b.parentId === null || b.parentId === '' ? null : String(b.parentId ?? doc.parent_id ?? '') || null
     if (parentId) {
       const target = await loadDoc(c, parentId, 'read')

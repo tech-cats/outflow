@@ -3,7 +3,7 @@ import { ROLES } from '../core/access'
 import { getEmailRules } from '../core/auth'
 import { parseCountries, type GeoScope } from '../config'
 import { GEO_SCOPES, getGeoRules, isAllowed, setGeoRule } from '../core/geo'
-import { getHomeDocId, setHomeDocId } from '../core/site'
+import { HOME_DOC_ID, createHomeDoc } from '../core/site'
 import { normalizeRule } from '../lib/email-rules'
 import type { AppEnv, Role } from '../types'
 import { body, country, fail, requireAdmin } from './util'
@@ -79,24 +79,13 @@ admin.put('/geo/:scope', async (c) => {
 })
 
 admin.get('/site', async (c) => {
-  const p = c.var.p
-  const id = await getHomeDocId(p)
-  const doc = id ? await p.db.get<{ id: string; title: string }>('SELECT id, title FROM docs WHERE id = ?', id) : null
-  return c.json({ home: doc ? { id: doc.id, title: doc.title } : null, missing: !!id && !doc })
+  const home = await c.var.p.db.get<{ title: string; visibility: string }>('SELECT title, visibility FROM docs WHERE id = ?', HOME_DOC_ID)
+  return c.json({ home: home ?? null })
 })
 
-/** body: { doc: "文档链接或 id" } 设为首页；{ doc: null } 恢复集合列表 */
-admin.put('/site/home', async (c) => {
-  const b = await body(c)
-  if (b.doc === null) {
-    await setHomeDocId(c.var.p, null)
-    return c.json({ ok: true })
-  }
-  if (typeof b.doc !== 'string') return fail(c, 400, '参数错误')
-  const id = /\/d\/([^/?#]+)/.exec(b.doc)?.[1] ?? b.doc.trim()
-  const doc = await c.var.p.db.get<{ id: string }>('SELECT id FROM docs WHERE id = ?', id)
-  if (!doc) return fail(c, 404, '找不到这篇文档')
-  await setHomeDocId(c.var.p, doc.id)
+admin.post('/site/home', async (c) => {
+  const r = await createHomeDoc(c.var.p, c.var.user!.id)
+  if (r === 'no-collection') return fail(c, 400, '请先创建一个集合')
   return c.json({ ok: true })
 })
 
