@@ -11,7 +11,11 @@ pnpm install
 ALLOWED_EMAIL_DOMAINS="<白名单，如 *.edu.cn>" pnpm setup:cf
 ```
 
-开发阶段可以先用 `MAIL_DRIVER=console`（验证码会打印在 `npx wrangler tail` 中）。要发送真实邮件时，修改 `server/wrangler.toml` 的 `[vars]`（该文件不提交，首次部署时从 `server/wrangler.example.toml` 生成；不要把站点配置写进模板）：
+开发阶段可以先用 `MAIL_DRIVER=console`（验证码会打印在 `npx wrangler tail` 中）。
+
+域名托管在 Cloudflare 时，推荐用 Cloudflare Email Service 发信：在控制台的 Email Service 中验证发件域名，然后在 `server/wrangler.toml` 中设置 `MAIL_DRIVER = "cloudflare"`、`MAIL_FROM = "站点名 <noreply@已验证的域名>"`，并启用文件末尾的 `[[send_email]]` 绑定，无需任何密钥。
+
+使用其他 SMTP 服务时，修改 `server/wrangler.toml` 的 `[vars]`（该文件不提交，首次部署时从 `server/wrangler.example.toml` 生成；不要把站点配置写进模板）：
 
 ```toml
 MAIL_DRIVER = "smtp"

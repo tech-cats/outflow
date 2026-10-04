@@ -1,6 +1,7 @@
 export type CaptchaProvider = 'altcha' | 'turnstile' | 'hcaptcha' | 'none'
 /** none：未配置任何邮件服务，发送验证码会直接报错，避免“看似成功却收不到邮件” */
-export type MailDriver = 'smtp' | 'resend' | 'console' | 'none'
+/** cloudflare：Cloudflare Email Service 的 Workers 绑定（EMAIL），仅在 Workers 上可用 */
+export type MailDriver = 'smtp' | 'resend' | 'cloudflare' | 'console' | 'none'
 export type GeoScope = 'register' | 'login'
 
 export interface Config {

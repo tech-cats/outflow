@@ -36,6 +36,12 @@ export function pickMailer(cfg: Config, smtp: (cfg: Config) => Mailer): Mailer {
       return resendMailer(cfg)
     case 'console':
       return consoleMailer()
+    case 'cloudflare':
+      return {
+        async send() {
+          throw new Error('MAIL_DRIVER=cloudflare 只能在 Cloudflare Workers 上使用')
+        },
+      }
     default:
       return {
         async send() {

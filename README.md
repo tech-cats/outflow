@@ -106,7 +106,7 @@ docker compose up -d --build
 | `GEO_REGISTER_COUNTRIES` / `GEO_LOGIN_COUNTRIES` | 各范围允许的国家/地区代码，如 `CN,HK`；留空表示不限制 |
 | `GEO_UNKNOWN` | 无法识别地区时 `deny`（默认）或 `allow` |
 | `GEO_COUNTRY_HEADER` / `GEO_MMDB_PATH` | 仅自托管：地区来源，二选一。IP 库用 `node scripts/geoip-download.mjs` 下载 |
-| `MAIL_DRIVER` | 留空自动选择（有 `SMTP_HOST` 用 smtp，有 `RESEND_API_KEY` 用 resend，都没有则无法发验证码）；`console` 只打印到日志，仅限开发 |
+| `MAIL_DRIVER` | 留空自动选择（有 `SMTP_HOST` 用 smtp，有 `RESEND_API_KEY` 用 resend，都没有则无法发验证码）；`cloudflare` 使用 Cloudflare Email Service（仅 Workers，需 `[[send_email]]` 绑定和已验证的发件域名，不需要密码）；`console` 只打印到日志，仅限开发 |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS` | SMTP 配置。在 Workers 上必须用 465 或 587 端口 |
 | `RATE_LIMIT_AUTH` / `RATE_LIMIT_WRITE` / `RATE_LIMIT_READ` | 自托管时的限流额度（每分钟次数，默认 10 / 120 / 300）；校园网共用出口 IP 时可调高 `RATE_LIMIT_AUTH`。Cloudflare 上改 `wrangler.toml` 的 `[[ratelimits]]` |
 | `APP_URL` | 对外访问地址，用于 sitemap 和 canonical；以 `https` 开头时会自动给 Cookie 加 `Secure` |

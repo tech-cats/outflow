@@ -11,7 +11,20 @@ export interface CfEnv {
   RL_AUTH: RateLimit
   RL_WRITE: RateLimit
   RL_READ: RateLimit
+  /** Cloudflare Email Service 绑定（MAIL_DRIVER = "cloudflare" 时需要） */
+  EMAIL?: EmailServiceBinding
   [key: string]: unknown
+}
+
+/** Cloudflare Email Service 的 send_email 绑定（workers-types 中尚无此签名） */
+interface EmailServiceBinding {
+  send(msg: {
+    from: string | { email: string; name?: string }
+    to: string
+    subject: string
+    text?: string
+    html?: string
+  }): Promise<{ messageId: string }>
 }
 
 const norm = (params: unknown[]) =>
@@ -53,6 +66,16 @@ function smtpMailer(cfg: Config): Mailer {
   }
 }
 
+function cloudflareMailer(cfg: Config, binding: EmailServiceBinding | undefined): Mailer {
+  return {
+    async send(msg) {
+      if (!binding) throw new Error('MAIL_DRIVER = "cloudflare" 需要在 wrangler.toml 中配置 [[send_email]] 绑定 EMAIL')
+      // 发件域名需要先在 Cloudflare Email Service 中完成验证，否则报 E_SENDER_NOT_VERIFIED
+      await binding.send({ from: parseAddress(cfg.mail.from), to: msg.to, subject: msg.subject, text: msg.text, html: msg.html })
+    },
+  }
+}
+
 const CACHE_ORIGIN = 'https://outflow.cache'
 
 export function cfPlatform(env: CfEnv, ctx?: { waitUntil(p: Promise<unknown>): void }): Platform {
@@ -73,8 +96,7 @@ export function cfPlatform(env: CfEnv, ctx?: { waitUntil(p: Promise<unknown>): v
         await env.UPLOADS.delete(key)
       },
     },
-    mailer:
-      pickMailer(config, smtpMailer),
+    mailer: config.mail.driver === 'cloudflare' ? cloudflareMailer(config, env.EMAIL) : pickMailer(config, smtpMailer),
     rateLimit: {
       async limit(bucket, key) {
         const binding = rl[bucket]

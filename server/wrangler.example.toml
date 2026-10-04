@@ -20,9 +20,10 @@ bucket_name = "outflow-uploads"
 name = "COLLAB"
 class_name = "CollabRoom"
 
+# 协作房间不使用 Durable Object 自身的存储（文档存在 D1），用 SQLite 后端以便免费套餐也能部署
 [[migrations]]
 tag = "v1"
-new_classes = ["CollabRoom"]
+new_sqlite_classes = ["CollabRoom"]
 
 [assets]
 directory = "../web/dist"
@@ -64,6 +65,7 @@ GEO_LOGIN_COUNTRIES = ""
 GEO_UNKNOWN = "deny"
 CAPTCHA_SITE_KEY = ""
 # 留空自动选择（配了 SMTP_HOST 用 smtp，配了 RESEND_API_KEY 用 resend，都没有则无法发送验证码）
+# cloudflare：使用 Cloudflare Email Service，需启用文件末尾的 [[send_email]] 绑定，并在控制台验证 MAIL_FROM 的域名
 # console 仅把邮件打印到日志，切勿用于生产
 MAIL_DRIVER = ""
 MAIL_FROM = "Outflow <noreply@example.com>"
@@ -72,3 +74,7 @@ SMTP_PORT = "465"
 SMTP_SECURE = "true"
 SMTP_USER = ""
 # 机密项用 wrangler secret put 设置：SESSION_SECRET、SMTP_PASS、CAPTCHA_SECRET、RESEND_API_KEY
+
+# MAIL_DRIVER = "cloudflare" 时启用
+# [[send_email]]
+# name = "EMAIL"
