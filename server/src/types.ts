@@ -1,3 +1,4 @@
+import type { SiteInfo } from './core/site'
 import type { Config } from './config'
 
 /** 极简 SQL 接口：D1 与 better-sqlite3 各实现一份 */
@@ -88,5 +89,7 @@ export type AppEnv = {
   Variables: {
     p: Platform
     user: User | null
+    /** 站点信息，按需加载（见 routes/util.ts 的 siteInfo） */
+    site?: SiteInfo
   }
 }

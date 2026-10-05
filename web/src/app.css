@@ -147,3 +147,4 @@ altcha-widget[display="invisible"] { position: absolute; width: 0; height: 0; ov
 .mail-tpl textarea { resize: vertical; }
 .mail-preview { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; background: var(--bg-soft); display: flex; flex-direction: column; gap: 6px; }
 .mail-preview p { margin: 4px 0; }
+.site-icon-preview { width: 40px; height: 40px; border-radius: 10px; object-fit: cover; }

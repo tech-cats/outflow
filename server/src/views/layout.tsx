@@ -8,6 +8,10 @@ import { POWERED_BY, THEME_INIT_JS, THEME_TOGGLE_JS, baseCss } from './styles'
 export interface LayoutProps {
   title: string
   appName: string
+  /** 站点图标地址；为空时使用内置图标 */
+  appIcon?: string | null
+  /** 站点描述：页面没有自己的描述时使用 */
+  siteDescription?: string
   user: User | null
   description?: string
   noindex?: boolean
@@ -18,6 +22,7 @@ export interface LayoutProps {
 
 export function Layout(props: LayoutProps) {
   const fullTitle = props.title ? `${props.title} · ${props.appName}` : props.appName
+  const description = props.description || props.siteDescription || undefined
   return (
     <>
     {raw('<!DOCTYPE html>')}
@@ -27,19 +32,20 @@ export function Layout(props: LayoutProps) {
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_JS }} />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>{fullTitle}</title>
-        {props.description && <meta name="description" content={props.description} />}
+        {description && <meta name="description" content={description} />}
         {props.noindex && <meta name="robots" content="noindex" />}
         {props.canonical && <link rel="canonical" href={props.canonical} />}
         <meta property="og:title" content={fullTitle} />
-        {props.description && <meta property="og:description" content={props.description} />}
+        {description && <meta property="og:description" content={description} />}
+        <meta property="og:site_name" content={props.appName} />
         <meta property="og:type" content="article" />
-        <link rel="icon" href={FAVICON} />
+        <link rel="icon" href={props.appIcon || FAVICON} />
         <style dangerouslySetInnerHTML={{ __html: baseCss }} />
       </head>
       <body>
         <header class="topbar">
           <a class="brand" href="/">
-            <span class="brand-mark" />
+            {props.appIcon ? <img class="brand-icon" src={props.appIcon} alt="" /> : <span class="brand-mark" />}
             {props.appName}
           </a>
           <form class="search" action="/search" method="get">

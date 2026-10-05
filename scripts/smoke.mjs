@@ -23,11 +23,12 @@ const check = (name, ok, extra = '') => {
 
 async function call(path, { method, body, cookie, headers = {} } = {}) {
   // 模拟浏览器：非 GET 请求带上同源 Origin（可被 headers 覆盖）
-  const h = method && method !== 'GET' ? { origin: BASE, ...headers } : { ...headers }
+  const m = method ?? (body !== undefined ? 'POST' : 'GET')
+  const h = m !== 'GET' ? { origin: BASE, ...headers } : { ...headers }
   if (cookie) h.cookie = cookie
   if (body !== undefined && !(body instanceof FormData)) h['content-type'] = 'application/json'
   const res = await fetch(BASE + path, {
-    method: method ?? (body !== undefined ? 'POST' : 'GET'),
+    method: m,
     headers: h,
     body: body instanceof FormData ? body : body !== undefined ? JSON.stringify(body) : undefined,
     redirect: 'manual',
@@ -124,6 +125,10 @@ up.append('docId', prot)
 r = await call('/api/uploads', { cookie: alice, body: up, headers: { origin: BASE } })
 check('上传图片', r.status === 200, r.json?.url)
 const img = r.json?.url
+// 站点图标测试用的公开图片
+const iconUp = new FormData()
+iconUp.append('file', new Blob([png], { type: 'image/png' }), 'icon.png')
+const icon = (await call('/api/uploads', { cookie: alice, body: iconUp })).json?.url
 check('匿名无法读取受保护文档的图片', (await call(img)).status === 404)
 check('登录用户可读取图片', (await call(img, { cookie: alice })).status === 200)
 
@@ -285,6 +290,26 @@ check('保存自定义邮件模板', (await tpl({ subject: '自定义标题 {app
 await call('/api/auth/send-code', { body: { email: 'erin@pku.edu.cn', purpose: 'register' } })
 check('验证码邮件使用自定义模板', /to=erin@pku\.edu\.cn\n\s*subject: 自定义标题 \S+ \d{6}\n\s*欢迎，验证码 \d{6}，站点 http/.test(readFileSync(LOG, 'utf8')))
 check('恢复默认邮件模板', (await tpl({ reset: true })).status === 200 && (await call('/api/admin/mail-template', { cookie: alice })).json?.custom === false)
+
+// ---- 站点信息 ----
+const siteInfo = (u, b) => call('/api/admin/site/info', { method: 'PUT', cookie: u, body: b })
+check('非管理员不能修改站点信息', (await siteInfo(bob.cookie, { name: 'x', description: '', icon: null })).status === 403)
+check('站点图标只接受本站上传的图片', (await siteInfo(alice, { name: '', description: '', icon: 'https://evil.example/a.png' })).status === 400)
+const defaultName = (await call('/api/config')).json.appName
+check('修改站点信息', (await siteInfo(alice, { name: ' 测试站点 ', description: '一句话介绍', icon })).status === 200)
+r = await call('/')
+check(
+  '首页使用新的站点名、描述和图标',
+  r.text.includes('<title>测试站点</title>') && r.text.includes('content="一句话介绍"') && r.text.includes(`<link rel="icon" href="${icon}"`),
+)
+r = (await call('/api/config')).json
+check('/api/config 返回站点信息', r.appName === '测试站点' && r.appIcon === icon && r.appDescription === '一句话介绍')
+check('匿名可读取站点图标', (await call(icon)).status === 200)
+await call('/api/auth/send-code', { body: { email: 'frank@pku.edu.cn', purpose: 'register' } })
+check('验证码邮件使用新的站点名', /to=frank@pku\.edu\.cn\n\s*subject: 【测试站点】/.test(readFileSync(LOG, 'utf8')))
+await siteInfo(alice, { name: '', description: '', icon: null })
+r = await call('/')
+check('清空后恢复默认站点名和图标', r.text.includes(`<title>${defaultName}</title>`) && !r.text.includes(`href="${icon}"`))
 
 // ---- 登录：渐进式验证码 ----
 let flags = []

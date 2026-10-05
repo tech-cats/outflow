@@ -12,7 +12,7 @@ import type { AppEnv, PMNode } from '../types'
 import { renderDocSections } from '../plugins/host'
 import { Discussion } from '../views/comments'
 import { Layout, Time, Tree, VisBadge } from '../views/layout'
-import { rateLimit } from './util'
+import { rateLimit, siteInfo } from './util'
 
 const pages = new Hono<AppEnv>()
 const PAGE_TTL = 60
@@ -47,8 +47,9 @@ function baseUrl(c: Context<AppEnv>) {
   return c.var.p.config.appUrl || new URL(c.req.url).origin
 }
 
-function layoutProps(c: Context<AppEnv>) {
-  return { appName: c.var.p.config.appName, user: c.var.user }
+async function layoutProps(c: Context<AppEnv>) {
+  const site = await siteInfo(c)
+  return { appName: site.name, appIcon: site.icon, siteDescription: site.description, user: c.var.user }
 }
 
 /* ---------------- 首页 ---------------- */
@@ -97,7 +98,7 @@ async function renderIndex(c: Context<AppEnv>, title: string): Promise<Response>
   const recent = [...readable].sort((a, b) => b.updated_at - a.updated_at).slice(0, 10)
   const colName = new Map(collections.map((x) => [x.id, x.name]))
   return await c.html(
-    <Layout {...layoutProps(c)} title={title} description={`${c.var.p.config.appName} 知识库`}>
+    <Layout {...(await layoutProps(c))} title={title} description={(await siteInfo(c)).description || undefined}>
       <main class="container">
         {title && (
           <h1 class="doc-title" style="margin-bottom:24px">
@@ -172,7 +173,7 @@ pages.get('/c/:id', rateLimit('read'), (c) =>
       ),
     )
     const res = await c.html(
-      <Layout {...layoutProps(c)} title={col.name} description={col.description || undefined}>
+      <Layout {...(await layoutProps(c))} title={col.name} description={col.description || undefined}>
         <main class="container">
           <h1 class="doc-title">{col.name}</h1>
           <div class="doc-meta">
@@ -254,7 +255,7 @@ async function renderDoc(c: Context<AppEnv>, id: string, home: boolean): Promise
 
   const res = await c.html(
     <Layout
-      {...layoutProps(c)}
+      {...(await layoutProps(c))}
       title={home ? '' : doc.title || '无标题'}
       description={description}
       noindex={vis !== 'public'}
@@ -325,7 +326,7 @@ pages.get('/search', rateLimit('read'), async (c) => {
   const results = await searchDocs(c.var.p, c.var.user, q)
   c.header('Cache-Control', 'private, no-store')
   return c.html(
-    <Layout {...layoutProps(c)} title={q ? `搜索：${q}` : '搜索'} noindex query={q}>
+    <Layout {...(await layoutProps(c))} title={q ? `搜索：${q}` : '搜索'} noindex query={q}>
       <main class="container">
         <h1 style="font-size:20px">{q ? `“${q}” 的搜索结果` : '搜索'}</h1>
         {!c.var.user && q && <p class="muted small">未登录时只搜索公开文档。</p>}
@@ -374,7 +375,7 @@ pages.get('/sitemap.xml', rateLimit('read'), async (c) => {
 async function notFound(c: Context<AppEnv>): Promise<Response> {
   c.status(404)
   return await c.html(
-    <Layout {...layoutProps(c)} title="未找到" noindex>
+    <Layout {...(await layoutProps(c))} title="未找到" noindex>
       <main class="container">
         <div class="card empty">
           <h2>页面不存在</h2>
@@ -390,7 +391,7 @@ async function loginRequired(c: Context<AppEnv>): Promise<Response> {
   c.status(401)
   const next = encodeURIComponent(new URL(c.req.url).pathname)
   return await c.html(
-    <Layout {...layoutProps(c)} title="需要登录" noindex>
+    <Layout {...(await layoutProps(c))} title="需要登录" noindex>
       <main class="container">
         <div class="card empty">
           <h2>此文档仅对登录用户可见</h2>

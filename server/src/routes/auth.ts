@@ -22,7 +22,7 @@ import { hashPassword, newId, verifyPassword } from '../lib/crypto'
 import { normalizeEmail } from '../lib/email-rules'
 import type { AppEnv } from '../types'
 import { blockedScopes } from '../core/geo'
-import { body, country, fail, geoBlock, ip, rateLimit, str } from './util'
+import { body, country, fail, geoBlock, ip, rateLimit, siteInfo, str } from './util'
 
 const auth = new Hono<AppEnv>()
 
@@ -202,14 +202,17 @@ auth.post('/auth/logout', async (c) => {
 auth.get('/me', (c) => c.json({ user: c.var.user }))
 
 auth.get('/config', async (c) => {
-  const { appName, registrationEnabled, loginCaptcha, captcha, mail } = c.var.p.config
+  const { registrationEnabled, loginCaptcha, captcha, mail } = c.var.p.config
+  const site = await siteInfo(c)
   const cc = country(c)
   c.header('Cache-Control', 'no-store')
   return c.json({
     // 当前访问者被地域白名单拒绝的范围，前端据此提前提示
     geo: { country: cc, blocked: await blockedScopes(c.var.p, cc) },
     mail: { configured: mail.driver !== 'none', devConsole: mail.driver === 'console' },
-    appName,
+    appName: site.name,
+    appIcon: site.icon,
+    appDescription: site.description,
     registrationEnabled,
     loginCaptcha,
     captcha: { provider: captcha.provider, siteKey: captcha.siteKey },

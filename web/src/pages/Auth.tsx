@@ -3,6 +3,7 @@ import { ApiError, api } from '../api'
 import { Captcha } from '../components/Captcha'
 import { useSession } from '../session'
 import { toggleTheme } from '../theme'
+import { BrandMark } from '../components/BrandMark'
 
 function safeNext(): string {
   const n = new URLSearchParams(location.search).get('next')
@@ -31,7 +32,7 @@ function AuthCard({
         ← 返回首页
       </a>
       <a className="brand auth-brand" href="/">
-        <span className="brand-mark" />
+        <BrandMark icon={config?.appIcon} />
         {config?.appName ?? 'Outflow'}
       </a>
       <div className="card auth-card">

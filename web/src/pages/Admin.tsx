@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ROLES, ROLE_LABEL, VIS_LABEL, api, formatTime, type Collection, type GeoScope, type Role, type Visibility } from '../api'
 import { Topbar } from '../components/Topbar'
+import { uploadPublicImage } from '../sdk'
 import { useSession } from '../session'
 
 interface AdminUser {
@@ -74,7 +75,8 @@ function Site() {
   if (!info) return null
   return (
     <section>
-      <h3 style={{ fontSize: 16 }}>首页</h3>
+      <SiteInfoEditor />
+      <h3 style={{ fontSize: 16, marginTop: 32 }}>首页</h3>
       <p className="muted small">
         首页文档是一篇固定的文档，显示在网站首页，适合放最常用的信息和链接。它不出现在集合的文档树中。没有首页文档、或访客无权阅读它时，首页显示集合列表；集合列表始终可以在
         <a href="/c">「全部文档」</a>中找到。
@@ -99,6 +101,109 @@ function Site() {
       {error && <div className="form-error">{error}</div>}
       <MailTemplateEditor />
     </section>
+  )
+}
+
+interface SiteInfoState {
+  info: { name: string; description: string; icon: string | null }
+  defaultName: string
+  limits: { name: number; description: number }
+}
+
+function SiteInfoEditor() {
+  const [state, setState] = useState<SiteInfoState | null>(null)
+  const [form, setForm] = useState<SiteInfoState['info']>({ name: '', description: '', icon: null })
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const load = async () => {
+    const r = await api<SiteInfoState>('/admin/site')
+    setState(r)
+    setForm(r.info)
+  }
+  useEffect(() => void load(), [])
+
+  const run = async (fn: () => Promise<string>) => {
+    setBusy(true)
+    setMsg(null)
+    try {
+      setMsg({ ok: true, text: await fn() })
+    } catch (e) {
+      setMsg({ ok: false, text: (e as Error).message })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!state) return null
+  const dirty = JSON.stringify(form) !== JSON.stringify(state.info)
+  return (
+    <>
+      <h3 style={{ fontSize: 16 }}>站点信息</h3>
+      <p className="muted small">显示在顶栏、浏览器标签页、搜索引擎和分享卡片中，验证码邮件里的 {'{app}'} 也使用这里的站点名。修改后匿名访客最多 1 分钟内看到更新。</p>
+      <form
+        className="mail-tpl"
+        onSubmit={(e) => {
+          e.preventDefault()
+          void run(async () => {
+            await api('/admin/site/info', { method: 'PUT', body: form })
+            await load()
+            return '已保存，刷新页面后生效'
+          })
+        }}
+      >
+        <label className="field">
+          <span>站点名</span>
+          <input
+            className="input"
+            value={form.name}
+            maxLength={state.limits.name}
+            placeholder={`留空则使用默认值：${state.defaultName}`}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+          />
+        </label>
+        <label className="field">
+          <span>站点描述</span>
+          <textarea
+            className="input"
+            rows={2}
+            value={form.description}
+            maxLength={state.limits.description}
+            placeholder="一句话介绍，用于搜索引擎和分享卡片"
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+          />
+        </label>
+        <div className="field">
+          <span>站点图标（建议正方形 PNG，至少 64×64）</span>
+          <div className="row-form" style={{ alignItems: 'center' }}>
+            {form.icon ? <img src={form.icon} alt="" className="site-icon-preview" /> : <span className="brand-mark site-icon-preview" />}
+            <label className="btn btn-sm">
+              上传图标
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif,image/avif"
+                hidden
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  e.target.value = ''
+                  if (f) void run(async () => (setForm({ ...form, icon: await uploadPublicImage(f) }), '图标已上传，保存后生效'))
+                }}
+              />
+            </label>
+            {form.icon && (
+              <button type="button" className="btn btn-sm" onClick={() => setForm({ ...form, icon: null })}>
+                使用内置图标
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="row-form">
+          <button className="btn btn-primary" disabled={busy || !dirty}>
+            保存
+          </button>
+        </div>
+        {msg && <div className={msg.ok ? 'muted small' : 'form-error'}>{msg.text}</div>}
+      </form>
+    </>
   )
 }
 

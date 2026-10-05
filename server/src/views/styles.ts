@@ -61,6 +61,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .brand { font-weight: 700; font-size: 17px; color: var(--fg); letter-spacing: .2px; display: flex; align-items: center; gap: 8px; }
 .brand:hover { text-decoration: none; }
 .brand-mark { width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(135deg, var(--accent), #8a5cf6); display: inline-block; }
+.brand-icon { width: 22px; height: 22px; border-radius: 6px; object-fit: cover; display: block; }
 .topbar .search { flex: 1; max-width: 420px; margin: 0; }
 .topbar .spacer { flex: 1; }
 .topbar .nav { display: flex; align-items: center; gap: 12px; font-size: 14px; }

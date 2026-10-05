@@ -26,3 +26,59 @@ export async function createHomeDoc(p: Platform, userId: string): Promise<'ok' |
   await p.cache.purge(['/'])
   return 'ok'
 }
+
+/* ---------------- 站点信息 ---------------- */
+
+/**
+ * 站点名、描述和图标，可在管理后台修改（保存在 settings 表）。
+ * 未设置时站点名取环境变量 APP_NAME，描述为空，图标使用内置图标。
+ */
+export interface SiteInfo {
+  name: string
+  description: string
+  /** 上传后的图片地址（/uploads/...）；null 表示使用内置图标 */
+  icon: string | null
+}
+
+export const SITE_LIMITS = { name: 60, description: 300 }
+const SITE_KEYS = { name: 'site.name', description: 'site.description', icon: 'site.icon' } as const
+
+export async function getSiteInfo(p: Platform): Promise<SiteInfo> {
+  const rows = await p.db.all<{ key: string; value: string }>("SELECT key, value FROM settings WHERE key IN ('site.name', 'site.description', 'site.icon')")
+  const m = new Map(rows.map((r) => [r.key, r.value]))
+  return { name: m.get(SITE_KEYS.name) || p.config.appName, description: m.get(SITE_KEYS.description) ?? '', icon: m.get(SITE_KEYS.icon) || null }
+}
+
+/** 校验并规范化，返回错误信息或规范化后的值；name 为空表示恢复为 APP_NAME */
+export function normalizeSiteInfo(b: Record<string, unknown>): SiteInfo | string {
+  if (typeof b.name !== 'string' || typeof b.description !== 'string' || (b.icon !== null && typeof b.icon !== 'string')) return '参数错误'
+  const name = b.name.replace(/\s+/g, ' ').trim()
+  const description = b.description.replace(/\s+/g, ' ').trim()
+  if (name.length > SITE_LIMITS.name) return `站点名最多 ${SITE_LIMITS.name} 字`
+  if (description.length > SITE_LIMITS.description) return `站点描述最多 ${SITE_LIMITS.description} 字`
+  // 只接受本站上传的图片，避免引用外部地址
+  const icon = (b.icon as string | null) || null
+  if (icon && !/^\/uploads\/[a-z0-9]+$/.test(icon)) return '图标地址无效，请重新上传'
+  return { name, description, icon }
+}
+
+export async function setSiteInfo(p: Platform, info: SiteInfo) {
+  const now = Date.now()
+  for (const [k, v] of [
+    [SITE_KEYS.name, info.name],
+    [SITE_KEYS.description, info.description],
+    [SITE_KEYS.icon, info.icon ?? ''],
+  ] as const) {
+    if (!v) await p.db.run('DELETE FROM settings WHERE key = ?', k)
+    else
+      await p.db.run(
+        `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+        k,
+        v,
+        now,
+      )
+  }
+  // 其他页面的匿名缓存最多 60 秒后自然过期
+  await p.cache.purge(['/', '/c'])
+}

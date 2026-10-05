@@ -16,6 +16,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       .then(([me, config]) => {
         setS({ user: me.user, config, loading: false })
         document.title = config.appName
+        if (config.appIcon) document.querySelector<HTMLLinkElement>('link[rel="icon"]')?.setAttribute('href', config.appIcon)
       })
       .catch(() => setS((x) => ({ ...x, loading: false })))
   }, [])

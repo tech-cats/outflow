@@ -3,6 +3,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import type { GeoScope } from '../config'
 import { hasRole } from '../core/access'
 import { GEO_SCOPES, getGeoRules, isAllowed } from '../core/geo'
+import { getSiteInfo, type SiteInfo } from '../core/site'
 import type { AppEnv, RateBucket, Role } from '../types'
 
 export function fail(c: Context, status: ContentfulStatusCode, error: string, extra: Record<string, unknown> = {}) {
@@ -67,4 +68,14 @@ export async function geoBlock(c: Context<AppEnv>, scope: GeoScope): Promise<Res
   const cc = country(c)
   if (isAllowed(rule, cc, p.config.geo.unknown)) return null
   return fail(c, 403, `当前地区（${cc ?? '未知'}）暂不开放${GEO_SCOPES[scope]}`, { geo: true, country: cc })
+}
+
+/** 当前请求的站点信息（同一请求内只查询一次） */
+export async function siteInfo(c: Context<AppEnv>): Promise<SiteInfo> {
+  let s = c.get('site')
+  if (!s) {
+    s = await getSiteInfo(c.var.p)
+    c.set('site', s)
+  }
+  return s
 }

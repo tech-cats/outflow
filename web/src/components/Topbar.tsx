@@ -3,6 +3,7 @@ import { api, hasRole } from '../api'
 import { pluginNav } from '../plugins'
 import { useSession } from '../session'
 import { toggleTheme } from '../theme'
+import { BrandMark } from './BrandMark'
 
 /** 与服务端阅读页保持一致的顶栏；跳到阅读页一律用整页导航 */
 export function Topbar({ children }: { children?: React.ReactNode }) {
@@ -11,7 +12,7 @@ export function Topbar({ children }: { children?: React.ReactNode }) {
   return (
     <header className="topbar">
       <a className="brand" href="/">
-        <span className="brand-mark" />
+        <BrandMark icon={config?.appIcon} />
         {config?.appName ?? 'Outflow'}
       </a>
       <form className="search" action="/search" method="get">

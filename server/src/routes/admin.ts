@@ -5,10 +5,10 @@ import { getEmailRules } from '../core/auth'
 import { parseCountries, type GeoScope } from '../config'
 import { GEO_SCOPES, getGeoRules, isAllowed, setGeoRule } from '../core/geo'
 import { DEFAULT_MAIL_TEMPLATE, MAIL_LIMITS, MAIL_PLACEHOLDERS, checkMailTemplate, getMailTemplate, renderMail, setMailTemplate, type MailTemplate } from '../core/mail-template'
-import { HOME_DOC_ID, createHomeDoc } from '../core/site'
+import { HOME_DOC_ID, SITE_LIMITS, createHomeDoc, getSiteInfo, normalizeSiteInfo, setSiteInfo } from '../core/site'
 import { normalizeRule } from '../lib/email-rules'
 import type { AppEnv, Role } from '../types'
-import { body, country, fail, rateLimit, requireAdmin } from './util'
+import { body, country, fail, rateLimit, requireAdmin, siteInfo } from './util'
 
 const admin = new Hono<AppEnv>()
 admin.use('*', requireAdmin)
@@ -81,8 +81,26 @@ admin.put('/geo/:scope', async (c) => {
 })
 
 admin.get('/site', async (c) => {
-  const home = await c.var.p.db.get<{ title: string; visibility: string }>('SELECT title, visibility FROM docs WHERE id = ?', HOME_DOC_ID)
-  return c.json({ home: home ?? null })
+  const p = c.var.p
+  const [home, site] = await Promise.all([
+    p.db.get<{ title: string; visibility: string }>('SELECT title, visibility FROM docs WHERE id = ?', HOME_DOC_ID),
+    getSiteInfo(p),
+  ])
+  // name 为空表示使用环境变量 APP_NAME
+  return c.json({
+    home: home ?? null,
+    info: { ...site, name: site.name === p.config.appName ? '' : site.name },
+    defaultName: p.config.appName,
+    limits: SITE_LIMITS,
+  })
+})
+
+/** body: { name, description, icon }；name 留空恢复为 APP_NAME，icon 为 null 使用内置图标 */
+admin.put('/site/info', async (c) => {
+  const info = normalizeSiteInfo(await body(c))
+  if (typeof info === 'string') return fail(c, 400, info)
+  await setSiteInfo(c.var.p, info)
+  return c.json({ ok: true })
 })
 
 admin.post('/site/home', async (c) => {
@@ -96,8 +114,8 @@ admin.post('/site/home', async (c) => {
 const templateFrom = (b: Record<string, unknown>): MailTemplate | null =>
   typeof b.subject === 'string' && typeof b.body === 'string' ? { subject: b.subject, body: b.body.replace(/\r\n/g, '\n') } : null
 
-const sampleVars = (c: Context<AppEnv>) => ({
-  app: c.var.p.config.appName,
+const sampleVars = async (c: Context<AppEnv>) => ({
+  app: (await siteInfo(c)).name,
   action: '注册',
   code: '123456',
   url: c.var.p.config.appUrl || new URL(c.req.url).origin,
@@ -126,7 +144,7 @@ admin.put('/mail-template', async (c) => {
 admin.post('/mail-template/preview', async (c) => {
   const t = templateFrom(await body(c))
   if (!t) return fail(c, 400, '参数错误')
-  return c.json({ ...renderMail(t, sampleVars(c)), error: checkMailTemplate(t) })
+  return c.json({ ...renderMail(t, await sampleVars(c)), error: checkMailTemplate(t) })
 })
 
 /** 把（未保存的）模板发一封测试邮件到自己的邮箱，用于检查发信配置 */
@@ -136,7 +154,7 @@ admin.post('/mail-template/test', rateLimit('auth'), async (c) => {
   const err = checkMailTemplate(t)
   if (err) return fail(c, 400, err)
   try {
-    await c.var.p.mailer.send({ to: c.var.user!.email, ...renderMail(t, sampleVars(c)) })
+    await c.var.p.mailer.send({ to: c.var.user!.email, ...renderMail(t, await sampleVars(c)) })
   } catch (e) {
     console.error('send test mail failed', e)
     return fail(c, 502, `发送失败：${(e as Error).message}`)

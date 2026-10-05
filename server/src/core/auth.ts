@@ -2,6 +2,7 @@ import { base64url, newId, randomBytes, randomDigits, sha256Hex, timingSafeEqual
 import { isEmailAllowed } from '../lib/email-rules'
 import type { Platform, User } from '../types'
 import { getMailTemplate, renderMail } from './mail-template'
+import { getSiteInfo } from './site'
 
 export const SESSION_COOKIE = 'outflow_session'
 export const SESSION_TTL_MS = 30 * 24 * 3600 * 1000
@@ -124,7 +125,8 @@ export async function checkEmailCode(
 /** url：站点地址（未配置 APP_URL 时由调用方传入请求的 origin） */
 export async function codeMail(p: Platform, code: string, purpose: CodePurpose, url: string) {
   const action = purpose === 'register' ? '注册' : '重置密码'
-  return renderMail(await getMailTemplate(p), { app: p.config.appName, action, code, url })
+  const [tpl, site] = await Promise.all([getMailTemplate(p), getSiteInfo(p)])
+  return renderMail(tpl, { app: site.name, action, code, url })
 }
 
 /* ---------------- 登录失败计数（渐进式：先要求验证码，再临时锁定） ---------------- */

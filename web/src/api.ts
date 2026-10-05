@@ -42,6 +42,9 @@ export interface User {
 
 export interface AppConfig {
   appName: string
+  /** 站点图标（/uploads/...）；null 表示内置图标 */
+  appIcon: string | null
+  appDescription: string
   registrationEnabled: boolean
   loginCaptcha: 'always' | 'after_failures'
   geo: { country: string | null; blocked: GeoScope[] }
