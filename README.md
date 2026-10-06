@@ -50,7 +50,7 @@ Outflow 本身不包含任何学校的数据。把插件仓库克隆到 `plugins
 ## 部署到 Cloudflare Workers
 
 ```bash
-npx wrangler login
+pnpm wrangler login       # 在仓库根目录执行，等同于在 server/ 下执行 pnpm exec wrangler
 ALLOWED_EMAIL_DOMAINS="*.edu.cn" pnpm setup:cf
 ```
 
@@ -63,7 +63,7 @@ ALLOWED_EMAIL_DOMAINS="*.edu.cn" pnpm setup:cf
 5. 部署 Worker
 6. 生成 `SESSION_SECRET`
 
-站点配置在 `server/wrangler.toml`：不提交，首次执行 `pnpm setup:cf` 时从模板 `server/wrangler.example.toml` 生成。部署后在其中的 `[vars]` 修改配置，然后执行 `pnpm deploy:cf`。机密项用 `npx wrangler secret put <NAME>` 设置（在 `server/` 目录下执行）。同一账号部署多个站点时，记得修改 `name`、`database_name` 和 `bucket_name`。
+站点配置在 `server/wrangler.toml`：不提交，首次执行 `pnpm setup:cf` 时从模板 `server/wrangler.example.toml` 生成。部署后在其中的 `[vars]` 修改配置，然后执行 `pnpm deploy:cf`。机密项用 `pnpm wrangler secret put <NAME>` 设置。同一账号部署多个站点时，记得修改 `name`、`database_name` 和 `bucket_name`。
 
 正式站点建议用单独的部署仓库管理：仓库里记录 Outflow 与插件的版本、站点的 `wrangler.toml`，部署时组装到一个构建目录中再执行上述命令，平台仓库本身不保留任何站点配置。
 
@@ -73,7 +73,7 @@ ALLOWED_EMAIL_DOMAINS="*.edu.cn" pnpm setup:cf
 
 ```bash
 cd server && cp -n wrangler.example.toml wrangler.toml && echo "SESSION_SECRET=$(openssl rand -hex 32)" > .dev.vars
-npx wrangler d1 migrations apply DB --local
+pnpm exec wrangler d1 migrations apply DB --local
 cd .. && pnpm dev:cf
 ```
 

@@ -12,7 +12,8 @@
     "setup:cf": "node scripts/setup-cf.mjs",
     "deploy:cf": "pnpm build && pnpm --filter server deploy:cf",
     "typecheck": "node scripts/plugins.mjs && pnpm -r typecheck",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "wrangler": "pnpm --filter server exec wrangler"
   },
   "engines": {
     "node": ">=24"

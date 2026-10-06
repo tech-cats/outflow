@@ -4,14 +4,14 @@
 
 ## 部署到 Cloudflare（推荐）
 
-前提：已登录 wrangler（`npx wrangler whoami` 能显示账号），或者已设置 `CLOUDFLARE_API_TOKEN`。
+前提：已登录 wrangler（`pnpm wrangler whoami` 能显示账号），或者已设置 `CLOUDFLARE_API_TOKEN`。
 
 ```bash
 pnpm install
 ALLOWED_EMAIL_DOMAINS="<白名单，如 *.edu.cn>" pnpm setup:cf
 ```
 
-开发阶段可以先用 `MAIL_DRIVER=console`（验证码会打印在 `npx wrangler tail` 中）。
+开发阶段可以先用 `MAIL_DRIVER=console`（验证码会打印在 `pnpm wrangler tail` 中）。
 
 域名托管在 Cloudflare 时，推荐用 Cloudflare Email Service 发信：在控制台的 Email Service 中验证发件域名，然后在 `server/wrangler.toml` 中设置 `MAIL_DRIVER = "cloudflare"`、`MAIL_FROM = "站点名 <noreply@已验证的域名>"`，并启用文件末尾的 `[[send_email]]` 绑定，无需任何密钥。
 
@@ -29,7 +29,7 @@ SMTP_USER = "..."
 然后执行：
 
 ```bash
-cd server && printf '%s' "<smtp 密码>" | npx wrangler secret put SMTP_PASS && cd .. && pnpm deploy:cf
+printf '%s' "<smtp 密码>" | pnpm wrangler secret put SMTP_PASS && pnpm deploy:cf
 ```
 
 ## 自托管（Docker）
@@ -42,6 +42,8 @@ docker compose up -d --build
 ```
 
 ## 开发约定
+
+- 包管理器统一用 pnpm（版本见 `package.json` 的 `packageManager`）：装依赖、跑脚本用 `pnpm`；调用项目里已安装的命令行工具用 `pnpm exec`，使用锁定的版本（wrangler 装在 `server/` 中，在根目录用 `pnpm wrangler <命令>`）；临时运行项目里没有的工具用 `pnpx`。不使用 npm、npx、yarn，脚本里启动子进程也一样
 
 - 业务逻辑放在 `server/src/core`，平台差异只放在 `server/src/adapters/{cf,node}.ts`
 - 新增数据表时，在 `server/migrations/` 新建 `000N_xxx.sql`。D1 和 Node 共用这些迁移文件，不要修改已发布的迁移

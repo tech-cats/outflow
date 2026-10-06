@@ -32,7 +32,7 @@ const DB_NAME = tomlValue('database_name')
 const BUCKET = tomlValue('bucket_name')
 
 const wrangler = (args, opts = {}) =>
-  execSync(`npx wrangler ${args}`, { cwd: serverDir, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], ...opts })
+  execSync(`pnpm exec wrangler ${args}`, { cwd: serverDir, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], ...opts })
 const step = (msg) => console.log(`\n▶ ${msg}`)
 
 step('检查 Cloudflare 登录状态')
@@ -41,7 +41,7 @@ try {
   if (/not authenticated|You are not logged in/i.test(who)) throw new Error()
   console.log(who.split('\n').find((l) => /logged in|email/i.test(l))?.trim() ?? '已登录')
 } catch {
-  console.error('未登录 Cloudflare，请先执行：npx wrangler login（或设置 CLOUDFLARE_API_TOKEN）')
+  console.error('未登录 Cloudflare，请先执行：pnpm wrangler login（或设置 CLOUDFLARE_API_TOKEN）')
   process.exit(1)
 }
 
@@ -75,17 +75,17 @@ try {
 }
 
 step('执行数据库迁移')
-execSync('npx wrangler d1 migrations apply DB --remote', { cwd: serverDir, stdio: 'inherit', env: { ...process.env, CI: '1' } })
+execSync('pnpm exec wrangler d1 migrations apply DB --remote', { cwd: serverDir, stdio: 'inherit', env: { ...process.env, CI: '1' } })
 
 step('构建前端')
 execSync('pnpm build', { cwd: root, stdio: 'inherit' })
 
 step('部署 Worker')
-execSync('npx wrangler deploy', { cwd: serverDir, stdio: 'inherit' })
+execSync('pnpm exec wrangler deploy', { cwd: serverDir, stdio: 'inherit' })
 
 step('设置机密')
 const putSecret = (name, value) => {
-  const r = spawnSync('npx', ['wrangler', 'secret', 'put', name], { cwd: serverDir, input: value, encoding: 'utf8' })
+  const r = spawnSync('pnpm', ['exec', 'wrangler', 'secret', 'put', name], { cwd: serverDir, input: value, encoding: 'utf8' })
   if (r.status !== 0) throw new Error(r.stderr)
   console.log(`✔ ${name}`)
 }
