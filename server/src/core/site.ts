@@ -82,3 +82,45 @@ export async function setSiteInfo(p: Platform, info: SiteInfo) {
   // 其他页面的匿名缓存最多 60 秒后自然过期
   await p.cache.purge(['/', '/c'])
 }
+
+/* ---------------- 注册页提示 ---------------- */
+
+/** 注册页的说明文字和非白名单邮箱的拒绝提示，可在管理后台修改；留空使用默认文案 */
+export interface RegisterTexts {
+  /** 显示在注册页邮箱输入框上方 */
+  hint: string
+  /** 邮箱不在白名单内时的提示 */
+  denied: string
+}
+
+export const DEFAULT_REGISTER_TEXTS: RegisterTexts = {
+  hint: '仅允许白名单内的邮箱（如学校邮箱）注册。',
+  denied: '该邮箱不在允许注册的范围内，请换一个邮箱。',
+}
+export const REGISTER_TEXT_LIMIT = 500
+const REGISTER_KEYS = { hint: 'register.hint', denied: 'register.denied' } as const
+
+/** custom 为后台保存的原始值（未设置时为空字符串） */
+export async function getRegisterTexts(p: Platform): Promise<RegisterTexts & { custom: RegisterTexts }> {
+  const rows = await p.db.all<{ key: string; value: string }>("SELECT key, value FROM settings WHERE key IN ('register.hint', 'register.denied')")
+  const m = new Map(rows.map((r) => [r.key, r.value]))
+  const custom = { hint: m.get(REGISTER_KEYS.hint) ?? '', denied: m.get(REGISTER_KEYS.denied) ?? '' }
+  return { hint: custom.hint || DEFAULT_REGISTER_TEXTS.hint, denied: custom.denied || DEFAULT_REGISTER_TEXTS.denied, custom }
+}
+
+/** 空字符串表示恢复默认 */
+export async function setRegisterTexts(p: Platform, t: RegisterTexts) {
+  const now = Date.now()
+  for (const k of ['hint', 'denied'] as const) {
+    const v = t[k].trim()
+    if (!v) await p.db.run('DELETE FROM settings WHERE key = ?', REGISTER_KEYS[k])
+    else
+      await p.db.run(
+        `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+        REGISTER_KEYS[k],
+        v,
+        now,
+      )
+  }
+}

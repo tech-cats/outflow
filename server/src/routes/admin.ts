@@ -5,7 +5,18 @@ import { getEmailRules } from '../core/auth'
 import { parseCountries, type GeoScope } from '../config'
 import { GEO_SCOPES, getGeoRules, isAllowed, setGeoRule } from '../core/geo'
 import { DEFAULT_MAIL_TEMPLATE, MAIL_LIMITS, MAIL_PLACEHOLDERS, checkMailTemplate, getMailTemplate, renderMail, setMailTemplate, type MailTemplate } from '../core/mail-template'
-import { HOME_DOC_ID, SITE_LIMITS, createHomeDoc, getSiteInfo, normalizeSiteInfo, setSiteInfo } from '../core/site'
+import {
+  DEFAULT_REGISTER_TEXTS,
+  HOME_DOC_ID,
+  REGISTER_TEXT_LIMIT,
+  SITE_LIMITS,
+  createHomeDoc,
+  getRegisterTexts,
+  getSiteInfo,
+  normalizeSiteInfo,
+  setRegisterTexts,
+  setSiteInfo,
+} from '../core/site'
 import { normalizeRule } from '../lib/email-rules'
 import type { AppEnv, Role } from '../types'
 import { body, country, fail, rateLimit, requireAdmin, siteInfo } from './util'
@@ -93,6 +104,20 @@ admin.get('/site', async (c) => {
     defaultName: p.config.appName,
     limits: SITE_LIMITS,
   })
+})
+
+admin.get('/register-texts', async (c) => {
+  const t = await getRegisterTexts(c.var.p)
+  return c.json({ ...t.custom, defaults: DEFAULT_REGISTER_TEXTS, limit: REGISTER_TEXT_LIMIT })
+})
+
+/** body: { hint, denied }，留空恢复默认文案 */
+admin.put('/register-texts', async (c) => {
+  const b = await body(c)
+  if (typeof b.hint !== 'string' || typeof b.denied !== 'string') return fail(c, 400, '参数错误')
+  if (b.hint.length > REGISTER_TEXT_LIMIT || b.denied.length > REGISTER_TEXT_LIMIT) return fail(c, 400, `每段提示最多 ${REGISTER_TEXT_LIMIT} 字`)
+  await setRegisterTexts(c.var.p, { hint: b.hint.replace(/\r\n/g, '\n'), denied: b.denied.replace(/\r\n/g, '\n') })
+  return c.json({ ok: true })
 })
 
 /** body: { name, description, icon }；name 留空恢复为 APP_NAME，icon 为 null 使用内置图标 */

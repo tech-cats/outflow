@@ -45,6 +45,8 @@ export interface AppConfig {
   /** 站点图标（/uploads/...）；null 表示内置图标 */
   appIcon: string | null
   appDescription: string
+  /** 注册页说明（后台可改） */
+  registerHint: string
   registrationEnabled: boolean
   loginCaptcha: 'always' | 'after_failures'
   geo: { country: string | null; blocked: GeoScope[] }

@@ -99,6 +99,7 @@ function Site() {
         </button>
       )}
       {error && <div className="form-error">{error}</div>}
+      <RegisterTextsEditor />
       <MailTemplateEditor />
     </section>
   )
@@ -196,6 +197,66 @@ function SiteInfoEditor() {
             )}
           </div>
         </div>
+        <div className="row-form">
+          <button className="btn btn-primary" disabled={busy || !dirty}>
+            保存
+          </button>
+        </div>
+        {msg && <div className={msg.ok ? 'muted small' : 'form-error'}>{msg.text}</div>}
+      </form>
+    </>
+  )
+}
+
+interface RegisterTextsInfo {
+  hint: string
+  denied: string
+  defaults: { hint: string; denied: string }
+  limit: number
+}
+
+function RegisterTextsEditor() {
+  const [info, setInfo] = useState<RegisterTextsInfo | null>(null)
+  const [form, setForm] = useState({ hint: '', denied: '' })
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const load = async () => {
+    const r = await api<RegisterTextsInfo>('/admin/register-texts')
+    setInfo(r)
+    setForm({ hint: r.hint, denied: r.denied })
+  }
+  useEffect(() => void load(), [])
+  if (!info) return null
+  const dirty = form.hint !== info.hint || form.denied !== info.denied
+  return (
+    <>
+      <h3 style={{ fontSize: 16, marginTop: 32 }}>注册页提示</h3>
+      <p className="muted small">留空使用默认文案。可以写明允许哪些邮箱、没有学校邮箱时找谁开通等；换行会保留。</p>
+      <form
+        className="mail-tpl"
+        onSubmit={async (e) => {
+          e.preventDefault()
+          setBusy(true)
+          setMsg(null)
+          try {
+            await api('/admin/register-texts', { method: 'PUT', body: form })
+            await load()
+            setMsg({ ok: true, text: '已保存' })
+          } catch (err) {
+            setMsg({ ok: false, text: (err as Error).message })
+          } finally {
+            setBusy(false)
+          }
+        }}
+      >
+        <label className="field">
+          <span>注册说明（显示在邮箱输入框上方）</span>
+          <textarea className="input" rows={2} maxLength={info.limit} value={form.hint} placeholder={info.defaults.hint} onChange={(e) => setForm({ ...form, hint: e.target.value })} />
+        </label>
+        <label className="field">
+          <span>非白名单提示（邮箱不在白名单内时显示）</span>
+          <textarea className="input" rows={2} maxLength={info.limit} value={form.denied} placeholder={info.defaults.denied} onChange={(e) => setForm({ ...form, denied: e.target.value })} />
+        </label>
         <div className="row-form">
           <button className="btn btn-primary" disabled={busy || !dirty}>
             保存

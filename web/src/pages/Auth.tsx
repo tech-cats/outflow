@@ -168,6 +168,8 @@ function CodeFlow({ purpose }: { purpose: 'register' | 'reset' }) {
   const [password, setPassword] = useState('')
   const [password2, setPassword2] = useState('')
   const [error, setError] = useState('')
+  /** 邮箱不在白名单内：用醒目的样式展示后台配置的提示 */
+  const [denied, setDenied] = useState(false)
   const [busy, setBusy] = useState(false)
   const [cooldown, setCooldown] = useState(0)
 
@@ -182,11 +184,13 @@ function CodeFlow({ purpose }: { purpose: 'register' | 'reset' }) {
   const alreadySent = sentTo !== null && sentTo === normalized
   const go = (n: 1 | 2 | 3) => {
     setError('')
+    setDenied(false)
     setStep(n)
   }
 
   const sendCode = async () => {
     setError('')
+    setDenied(false)
     setBusy(true)
     try {
       await api('/auth/send-code', { body: { email: normalized, purpose, captcha } })
@@ -197,6 +201,7 @@ function CodeFlow({ purpose }: { purpose: 'register' | 'reset' }) {
     } catch (err) {
       const e = err as ApiError
       setError(e.message)
+      setDenied(e.data?.notAllowed === true)
       if (typeof e.data?.retryAfter === 'number') setCooldown(e.data.retryAfter)
     } finally {
       // 每个人机验证 token 只能用一次，重新挂载组件以自动再做一次
@@ -267,12 +272,29 @@ function CodeFlow({ purpose }: { purpose: 'register' | 'reset' }) {
             else void sendCode()
           }}
         >
-          <Field label="邮箱" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-          {purpose === 'register' && <p className="muted small" style={{ margin: 0 }}>仅允许白名单内的邮箱（如学校邮箱）注册。</p>}
+          <Field
+            label="邮箱"
+            type="email"
+            autoComplete="email"
+            required
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value)
+              setDenied(false)
+            }}
+          />
+          {purpose === 'register' && config?.registerHint && <div className="form-notice">{config.registerHint}</div>}
           {config && !config.mail.configured && (
             <div className="form-error">邮件服务尚未配置，暂时无法发送验证码，请联系管理员。</div>
           )}
-          {error && <div className="form-error">{error}</div>}
+          {denied ? (
+            <div className="form-alert" role="alert">
+              <strong>无法使用该邮箱注册</strong>
+              <div>{error}</div>
+            </div>
+          ) : (
+            error && <div className="form-error">{error}</div>
+          )}
           {alreadySent && cooldown > 0 ? (
             <button className="btn btn-primary">继续输入验证码</button>
           ) : (

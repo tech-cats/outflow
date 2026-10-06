@@ -23,6 +23,7 @@ import { hashPassword, newId, verifyPassword } from '../lib/crypto'
 import { normalizeEmail } from '../lib/email-rules'
 import type { AppEnv } from '../types'
 import { blockedScopes } from '../core/geo'
+import { getRegisterTexts } from '../core/site'
 import { body, country, fail, geoBlock, ip, rateLimit, siteInfo, str } from './util'
 
 const auth = new Hono<AppEnv>()
@@ -66,7 +67,7 @@ auth.post('/auth/send-code', rateLimit('auth'), async (c) => {
   if (purpose === 'register') {
     if (!p.config.registrationEnabled) return fail(c, 403, '当前未开放注册')
     // 白名单检查放在发信之前：不在名单内的邮箱不会消耗任何邮件额度
-    if (!(await emailAllowed(p, email))) return fail(c, 403, '该邮箱不在允许注册的范围内')
+    if (!(await emailAllowed(p, email))) return emailDenied(c)
   }
 
   // 不暴露邮箱是否已注册：已注册的邮箱注册、未注册的邮箱找回密码时，照常限流、照常发信（改发提醒邮件），
@@ -113,7 +114,7 @@ auth.post('/auth/register', rateLimit('auth'), async (c) => {
   const pwErr = passwordError(b.password)
   if (pwErr) return fail(c, 400, pwErr)
   if (!p.config.registrationEnabled) return fail(c, 403, '当前未开放注册')
-  if (!(await emailAllowed(p, email))) return fail(c, 403, '该邮箱不在允许注册的范围内')
+  if (!(await emailAllowed(p, email))) return emailDenied(c)
 
   const codeErr = await consumeEmailCode(p, email, 'register', String(b.code ?? ''))
   if (codeErr) return fail(c, 400, codeErr)
@@ -202,6 +203,11 @@ auth.post('/auth/logout', async (c) => {
 
 auth.get('/me', (c) => c.json({ user: c.var.user }))
 
+/** 邮箱不在白名单内：返回后台配置的提示，notAllowed 让前端用醒目的样式展示 */
+async function emailDenied(c: Context<AppEnv>) {
+  return fail(c, 403, (await getRegisterTexts(c.var.p)).denied, { notAllowed: true })
+}
+
 auth.get('/config', async (c) => {
   const { registrationEnabled, loginCaptcha, captcha, mail } = c.var.p.config
   const site = await siteInfo(c)
@@ -214,6 +220,7 @@ auth.get('/config', async (c) => {
     appName: site.name,
     appIcon: site.icon,
     appDescription: site.description,
+    registerHint: (await getRegisterTexts(c.var.p)).hint,
     registrationEnabled,
     loginCaptcha,
     captcha: { provider: captcha.provider, siteKey: captcha.siteKey },

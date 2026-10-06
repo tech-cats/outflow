@@ -322,6 +322,18 @@ await siteInfo(alice, { name: '', description: '', icon: null })
 r = await call('/')
 check('清空后恢复默认站点名和图标', r.text.includes(`<title>${defaultName}</title>`) && !r.text.includes(`href="${icon}"`))
 
+// ---- 注册页提示 ----
+const regTexts = (u, b) => call('/api/admin/register-texts', { method: 'PUT', cookie: u, body: b })
+check('非管理员不能修改注册页提示', (await regTexts(bob.cookie, { hint: 'x', denied: 'x' })).status === 403)
+r = await call('/api/auth/send-code', { body: { email: 'mallory@gmail.com', purpose: 'register' } })
+check('非白名单邮箱默认提示', r.status === 403 && r.json?.notAllowed === true && r.json.error.length > 0)
+check('修改注册页提示', (await regTexts(alice, { hint: '请用学校邮箱注册', denied: '只接受 pku.edu.cn 邮箱\n没有的话请联系管理员' })).status === 200)
+r = await call('/api/auth/send-code', { body: { email: 'mallory@gmail.com', purpose: 'register' } })
+check('非白名单邮箱返回后台配置的提示', r.status === 403 && r.json?.error === '只接受 pku.edu.cn 邮箱\n没有的话请联系管理员')
+check('/api/config 返回注册说明', (await call('/api/config')).json?.registerHint === '请用学校邮箱注册')
+await regTexts(alice, { hint: '', denied: '' })
+check('清空后恢复默认注册页提示', (await call('/api/admin/register-texts', { cookie: alice })).json?.hint === '' && (await call('/api/config')).json?.registerHint !== '请用学校邮箱注册')
+
 // ---- 登录：渐进式验证码 ----
 let flags = []
 for (let i = 0; i < 4; i++) {
