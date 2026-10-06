@@ -63,6 +63,17 @@ r = await call('/api/auth/register', { body: { email: 'alice@pku.edu.cn', code, 
 check('注册成功且首个用户为管理员', r.status === 200 && r.json?.user?.role === 'admin')
 const alice = r.cookie
 
+// ---- 不暴露邮箱是否注册：未注册的邮箱找回密码，照常发信（提醒邮件）并照常冷却 ----
+r = await call('/api/auth/send-code', { body: { email: 'nobody@pku.edu.cn', purpose: 'reset' } })
+check('未注册邮箱找回密码返回成功', r.status === 200)
+r = await call('/api/auth/send-code', { body: { email: 'nobody@pku.edu.cn', purpose: 'reset' } })
+check('未注册邮箱同样受重发冷却', r.status === 429, r.json?.error)
+await sleep(300)
+check(
+  '未注册邮箱收到提醒邮件而不是验证码',
+  /to=nobody@pku\.edu\.cn\n.*找回密码提醒/.test(readFileSync(LOG, 'utf8')) && !lastCode('nobody@pku.edu.cn'),
+)
+
 // ---- 地域白名单 ----
 const geoPut = (scope, countries, headers = {}) =>
   call(`/api/admin/geo/${scope}`, { method: 'PUT', cookie: alice, body: { countries }, headers })

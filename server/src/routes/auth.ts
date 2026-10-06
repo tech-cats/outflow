@@ -14,6 +14,7 @@ import {
   emailAllowed,
   getFailures,
   issueEmailCode,
+  noticeMail,
   recordFailure,
   type CodePurpose,
 } from '../core/auth'
@@ -62,21 +63,21 @@ auth.post('/auth/send-code', rateLimit('auth'), async (c) => {
   if (p.config.mail.driver === 'none') return fail(c, 503, '邮件服务未配置，暂时无法发送验证码，请联系管理员')
   if (!(await verifyCaptcha(p, b.captcha, ip(c)))) return fail(c, 400, '人机验证失败，请重试', { captcha: true })
 
-  const exists = await p.db.get('SELECT 1 AS x FROM users WHERE email = ?', email)
   if (purpose === 'register') {
     if (!p.config.registrationEnabled) return fail(c, 403, '当前未开放注册')
     // 白名单检查放在发信之前：不在名单内的邮箱不会消耗任何邮件额度
     if (!(await emailAllowed(p, email))) return fail(c, 403, '该邮箱不在允许注册的范围内')
-    if (exists) return fail(c, 409, '该邮箱已注册，请直接登录')
-  } else if (!exists) {
-    // 重置密码时不暴露邮箱是否存在
-    return c.json({ ok: true })
   }
 
-  const r = await issueEmailCode(p, email, purpose)
+  // 不暴露邮箱是否已注册：已注册的邮箱注册、未注册的邮箱找回密码时，照常限流、照常发信（改发提醒邮件），
+  // 响应、冷却和耗时都与正常发验证码一致
+  const exists = !!(await p.db.get('SELECT 1 AS x FROM users WHERE email = ?', email))
+  const notice = purpose === 'register' ? exists : !exists
+  const r = await issueEmailCode(p, email, purpose, notice)
   if (!r.ok) return fail(c, 429, r.error, { retryAfter: r.retryAfter })
+  const url = p.config.appUrl || new URL(c.req.url).origin
   try {
-    await p.mailer.send({ to: email, ...(await codeMail(p, r.code, purpose, p.config.appUrl || new URL(c.req.url).origin)) })
+    await p.mailer.send({ to: email, ...(notice ? await noticeMail(p, purpose, url) : await codeMail(p, r.code, purpose, url)) })
   } catch (err) {
     console.error('send mail failed', err)
     await p.db.run('DELETE FROM email_codes WHERE email = ? AND created_at >= ?', email, Date.now() - 60_000)

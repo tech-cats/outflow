@@ -297,7 +297,8 @@ function CodeFlow({ purpose }: { purpose: 'register' | 'reset' }) {
           }}
         >
           <div className="form-info">
-            验证码已发送至 <strong>{sentTo}</strong>，10 分钟内有效。
+            邮件已发送至 <strong>{sentTo}</strong>，验证码 10 分钟内有效。
+            {purpose === 'register' ? '如果该邮箱已注册，你会收到一封提醒邮件而不是验证码。' : '如果该邮箱尚未注册，你会收到一封提醒邮件而不是验证码。'}
           </div>
           {config?.mail.devConsole && (
             <div className="form-warn">开发模式（MAIL_DRIVER=console）：邮件不会真正发出，验证码打印在服务端日志中。</div>
