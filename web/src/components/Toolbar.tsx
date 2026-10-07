@@ -1,5 +1,6 @@
 import { useEditorState, type Editor } from '@tiptap/react'
 import { useRef } from 'react'
+import { newGuideCards } from '../editor/GuideCards'
 
 interface Props {
   editor: Editor
@@ -69,6 +70,7 @@ export function Toolbar({ editor, onUpload }: Props) {
       <B on={s.quote} title="引用" onClick={() => chain().toggleBlockquote().run()}>❝</B>
       <B on={s.codeBlock} title="代码块" onClick={() => chain().toggleCodeBlock().run()}>{'{ }'}</B>
       <B title="分割线" onClick={() => chain().setHorizontalRule().run()}>―</B>
+      <B title="引导卡片：带图标、标题、说明和链接的卡片，适合放在首页" onClick={() => chain().insertContent(newGuideCards).run()}>▦</B>
       <B title="插入图片（也可直接粘贴/拖入）" onClick={() => fileRef.current?.click()}>🖼</B>
       <input
         ref={fileRef}

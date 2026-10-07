@@ -1,9 +1,23 @@
 import { raw } from 'hono/html'
 import type { Child } from 'hono/jsx'
 import { hasRole } from '../core/access'
+import { avatarColor, avatarInitial, avatarSrc } from '../lib/avatar'
 import { pluginNav } from '../plugins/host'
 import type { User, Visibility } from '../types'
 import { POWERED_BY, THEME_INIT_JS, THEME_TOGGLE_JS, baseCss } from './styles'
+
+/** 用户头像：没有上传时显示用户名首字 */
+export function Avatar(props: { id: string; name: string | null; src?: string | null; size: number }) {
+  const src = avatarSrc(props.src)
+  const style = `width:${props.size}px;height:${props.size}px;font-size:${Math.round(props.size * 0.46)}px`
+  return src ? (
+    <img class="avatar" src={src} alt="" style={style} loading="lazy" />
+  ) : (
+    <span class="avatar" style={`${style};background:${avatarColor(props.id)}`} aria-hidden="true">
+      {avatarInitial(props.name)}
+    </span>
+  )
+}
 
 export interface LayoutProps {
   title: string
@@ -71,7 +85,10 @@ export function Layout(props: LayoutProps) {
                   通知<span class="bell-count" id="bell-count" hidden />
                 </a>
                 {props.user.role === 'admin' && <a href="/admin">管理</a>}
-                <span class="muted">{props.user.name}</span>
+                <a href="/account" class="me" title="个人设置">
+                  <Avatar id={props.user.id} name={props.user.name} src={props.user.avatar} size={24} />
+                  <span>{props.user.name}</span>
+                </a>
                 <button class="link" id="logout">
                   退出
                 </button>

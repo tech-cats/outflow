@@ -129,8 +129,7 @@ admin.put('/site/info', async (c) => {
 })
 
 admin.post('/site/home', async (c) => {
-  const r = await createHomeDoc(c.var.p, c.var.user!.id)
-  if (r === 'no-collection') return fail(c, 400, '请先创建一个集合')
+  await createHomeDoc(c.var.p, c.var.user!.id)
   return c.json({ ok: true })
 })
 

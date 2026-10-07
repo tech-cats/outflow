@@ -2,6 +2,7 @@ import { RouterProvider, createRootRoute, createRoute, createRouter, lazyRouteCo
 import { createRoot } from 'react-dom/client'
 import { POWERED_BY, baseCss } from '../../server/src/views/styles'
 import './app.css'
+import { AccountPage } from './pages/Account'
 import { AdminPage } from './pages/Admin'
 import { NewPage } from './pages/New'
 import { NotificationsPage } from './pages/Notifications'
@@ -53,6 +54,7 @@ const routes = [
   createRoute({ getParentRoute: () => rootRoute, path: '/new', component: NewPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/admin', component: AdminPage }),
   createRoute({ getParentRoute: () => rootRoute, path: '/notifications', component: NotificationsPage }),
+  createRoute({ getParentRoute: () => rootRoute, path: '/account', component: AccountPage }),
   editRoute,
 ]
 

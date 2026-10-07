@@ -3,6 +3,7 @@ import type { Context } from 'hono'
 import { VISIBILITIES, canAddChild, canEditChain, canToggleDraft, chainReadable, effectiveVisibility, filterReadable, loadChain, type DocNode } from '../core/access'
 import { docCacheKeys } from '../core/docs'
 import { HOME_DOC_ID } from '../core/site'
+import { TOPIC_NAME_MAX, createTopic, defaultTopic, listTopics, moveSubtreeToTopic } from '../core/topics'
 import { searchDocs } from '../core/search'
 import { newId } from '../lib/crypto'
 import { jsonToHtml, jsonToMarkdown } from '../lib/prosemirror'
@@ -26,7 +27,7 @@ const DOC_COLS = 'id, collection_id, parent_id, title, visibility, locked, autho
 function docJson(d: DocRow) {
   return {
     id: d.id,
-    collectionId: d.collection_id,
+    topicId: d.collection_id,
     parentId: d.parent_id,
     title: d.title,
     visibility: d.visibility,
@@ -54,60 +55,51 @@ async function loadDoc(c: Context<AppEnv>, id: string, need: 'read' | 'edit') {
   return { doc, chain, canEdit }
 }
 
-/* ---------------- 集合 ---------------- */
+/* ---------------- 主题 ---------------- */
 
-docs.get('/collections', async (c) => {
-  const rows = await c.var.p.db.all(
-    'SELECT id, name, description, default_visibility AS defaultVisibility, sort FROM collections ORDER BY sort, created_at',
-  )
-  return c.json({ collections: rows })
+docs.get('/topics', async (c) => c.json({ topics: await listTopics(c.var.p) }))
+
+docs.post('/topics', requireRole('editor'), rateLimit('write'), async (c) => {
+  const name = str((await body(c)).name, TOPIC_NAME_MAX)
+  if (!name) return fail(c, 400, '请填写主题名称')
+  return c.json({ id: await createTopic(c.var.p, name, c.var.user!.id) })
 })
 
-docs.post('/collections', requireRole('editor'), rateLimit('write'), async (c) => {
+docs.patch('/topics/:id', requireRole('editor'), async (c) => {
   const b = await body(c)
-  const name = str(b.name, 60)
-  if (!name) return fail(c, 400, '请填写集合名称')
-  const vis = VISIBILITIES.includes(b.defaultVisibility as Visibility) ? (b.defaultVisibility as Visibility) : 'public'
-  const id = newId()
-  await c.var.p.db.run(
-    `INSERT INTO collections (id, name, description, default_visibility, sort, created_by, created_at)
-     VALUES (?, ?, ?, ?, (SELECT COALESCE(MAX(sort), 0) + 1 FROM collections), ?, ?)`,
-    id,
-    name,
-    str(b.description, 500) ?? '',
-    vis,
-    c.var.user!.id,
-    Date.now(),
-  )
-  return c.json({ id })
-})
-
-docs.patch('/collections/:id', requireAdmin, async (c) => {
-  const b = await body(c)
-  const db = c.var.p.db
+  const p = c.var.p
   const id = c.req.param('id')
-  const name = str(b.name, 60)
-  if (name) await db.run('UPDATE collections SET name = ? WHERE id = ?', name, id)
-  if (typeof b.description === 'string') await db.run('UPDATE collections SET description = ? WHERE id = ?', b.description.slice(0, 500), id)
-  if (VISIBILITIES.includes(b.defaultVisibility as Visibility)) {
-    await db.run('UPDATE collections SET default_visibility = ? WHERE id = ?', b.defaultVisibility, id)
+  const name = str(b.name, TOPIC_NAME_MAX)
+  if (name) await p.db.run('UPDATE collections SET name = ? WHERE id = ?', name, id)
+  if (typeof b.sort === 'number' && Number.isFinite(b.sort)) await p.db.run('UPDATE collections SET sort = ? WHERE id = ?', b.sort, id)
+  await p.cache.purge(['/', '/c', `/c/${id}`])
+  return c.json({ ok: true })
+})
+
+/** 只能删除空主题，避免误删文档；首页文档会被挪到其他主题 */
+docs.delete('/topics/:id', requireAdmin, async (c) => {
+  const p = c.var.p
+  const id = c.req.param('id')
+  const n = await p.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM docs WHERE collection_id = ? AND id != ?', id, HOME_DOC_ID)
+  if (n?.n) return fail(c, 400, `该主题下还有 ${n.n} 篇文档，请先移到其他主题`)
+  if (await p.db.get('SELECT 1 FROM docs WHERE id = ? AND collection_id = ?', HOME_DOC_ID, id)) {
+    const other = await p.db.get<{ id: string }>('SELECT id FROM collections WHERE id != ? ORDER BY sort, created_at LIMIT 1', id)
+    if (!other) return fail(c, 400, '至少要保留一个主题')
+    await moveSubtreeToTopic(p, HOME_DOC_ID, other.id)
   }
+  await p.db.run('DELETE FROM collections WHERE id = ?', id)
+  await p.cache.purge(['/', '/c', `/c/${id}`])
   return c.json({ ok: true })
 })
 
-docs.delete('/collections/:id', requireAdmin, async (c) => {
-  await c.var.p.db.run('DELETE FROM collections WHERE id = ?', c.req.param('id'))
-  return c.json({ ok: true })
-})
-
-/** 集合的文档树（扁平列表，仅包含当前用户可读的文档） */
-docs.get('/collections/:id/tree', rateLimit('read'), async (c) => {
-  const rows = await c.var.p.db.all<DocRow>(
-    `SELECT ${DOC_COLS} FROM docs WHERE collection_id = ? ORDER BY sort, created_at`,
-    c.req.param('id'),
-  )
-  // 首页文档虽然归属某个集合，但不出现在文档树中
-  return c.json({ docs: filterReadable(c.var.user, rows.filter((d) => d.id !== HOME_DOC_ID)).map(docJson) })
+/** 全站文档树：全部主题，以及当前用户可读的文档（扁平列表，首页文档除外） */
+docs.get('/tree', rateLimit('read'), async (c) => {
+  const p = c.var.p
+  const [topics, rows] = await Promise.all([
+    listTopics(p),
+    p.db.all<DocRow>(`SELECT ${DOC_COLS} FROM docs WHERE id != ? ORDER BY sort, created_at`, HOME_DOC_ID),
+  ])
+  return c.json({ topics, docs: filterReadable(c.var.user, rows).map(docJson) })
 })
 
 /* ---------------- 文档 ---------------- */
@@ -115,21 +107,23 @@ docs.get('/collections/:id/tree', rateLimit('read'), async (c) => {
 docs.post('/docs', requireRole('contributor'), rateLimit('write'), async (c) => {
   const p = c.var.p
   const b = await body(c)
-  const col = await p.db.get<{ id: string; default_visibility: Visibility }>(
-    'SELECT id, default_visibility FROM collections WHERE id = ?',
-    String(b.collectionId ?? ''),
-  )
-  if (!col) return fail(c, 400, '集合不存在')
-  let visibility = col.default_visibility
+  let topicId: string
+  let visibility: Visibility = 'public'
   let parentId: string | null = null
   if (b.parentId) {
     const r = await loadDoc(c, String(b.parentId), 'read')
     if (r.res) return r.res
     if (!canAddChild(c.var.user, r.chain)) return fail(c, 403, '不能在该文档下新建子文档')
-    if (r.doc.collection_id !== col.id) return fail(c, 400, '父文档不属于该集合')
     parentId = r.doc.id
+    topicId = r.doc.collection_id
     // 子文档默认继承父文档的可见性（草稿除外）
     visibility = r.doc.visibility === 'draft' ? 'protected' : r.doc.visibility
+  } else if (b.topicId) {
+    const t = await p.db.get<{ id: string }>('SELECT id FROM collections WHERE id = ?', String(b.topicId))
+    if (!t) return fail(c, 400, '主题不存在')
+    topicId = t.id
+  } else {
+    topicId = await defaultTopic(p, c.var.user!.id)
   }
   const id = newId()
   const now = Date.now()
@@ -137,12 +131,12 @@ docs.post('/docs', requireRole('contributor'), rateLimit('write'), async (c) => 
     `INSERT INTO docs (id, collection_id, parent_id, title, visibility, author_id, sort, created_at, updated_at, updated_by)
      VALUES (?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(sort), 0) + 1 FROM docs WHERE collection_id = ? AND parent_id IS ?), ?, ?, ?)`,
     id,
-    col.id,
+    topicId,
     parentId,
     str(b.title, 200) ?? '',
     visibility,
     c.var.user!.id,
-    col.id,
+    topicId,
     parentId,
     now,
     now,
@@ -168,7 +162,7 @@ docs.get('/docs/:id', rateLimit('read'), async (c) => {
       authorName: name(r.doc.author_id),
       updatedByName: name(r.doc.updated_by),
     },
-    collection: col,
+    topic: col,
     breadcrumbs: crumbs.filter(Boolean),
     canEdit: r.canEdit,
     canDraft: r.canEdit && canToggleDraft(c.var.user, r.doc),
@@ -206,18 +200,35 @@ docs.patch('/docs/:id', requireUser, rateLimit('write'), async (c) => {
     if (user.role !== 'admin') return fail(c, 403, '只有管理员可以锁定文档')
     await p.db.run('UPDATE docs SET locked = ? WHERE id = ?', b.locked ? 1 : 0, doc.id)
   }
-  if (b.parentId !== undefined || b.sort !== undefined) {
+  if (b.parentId !== undefined || b.sort !== undefined || b.topicId !== undefined) {
     if (doc.id === HOME_DOC_ID) return fail(c, 400, '首页文档不能移动')
-    const parentId = b.parentId === null || b.parentId === '' ? null : String(b.parentId ?? doc.parent_id ?? '') || null
+    // 只指定了新主题时，移到该主题的顶级
+    const toTopicTop = b.parentId === undefined && b.topicId !== undefined && b.topicId !== doc.collection_id
+    const parentId = toTopicTop || b.parentId === null || b.parentId === '' ? null : String(b.parentId ?? doc.parent_id ?? '') || null
+    // 有父文档时跟随父文档的主题；移到顶级时可以同时换主题
+    let topicId = doc.collection_id
     if (parentId) {
       const target = await loadDoc(c, parentId, 'read')
       if (target.res) return target.res
       if (!canAddChild(user, target.chain)) return fail(c, 403, '不能移动到该文档下')
-      if (target.doc.collection_id !== doc.collection_id) return fail(c, 400, '不能移动到其他集合')
       if (target.chain.some((n) => n.id === doc.id)) return fail(c, 400, '不能移动到自己的子文档下')
+      topicId = target.doc.collection_id
+    } else if (b.topicId !== undefined) {
+      const t = await p.db.get<{ id: string }>('SELECT id FROM collections WHERE id = ?', String(b.topicId))
+      if (!t) return fail(c, 400, '主题不存在')
+      topicId = t.id
     }
-    const sort = typeof b.sort === 'number' && Number.isFinite(b.sort) ? b.sort : doc.sort
+    let sort = typeof b.sort === 'number' && Number.isFinite(b.sort) ? b.sort : doc.sort
+    // 换了位置但没指定顺序时排到最后
+    if (b.sort === undefined && (parentId !== doc.parent_id || topicId !== doc.collection_id)) {
+      const last = await p.db.get<{ s: number | null }>('SELECT MAX(sort) AS s FROM docs WHERE collection_id = ? AND parent_id IS ?', topicId, parentId)
+      sort = (last?.s ?? 0) + 1
+    }
     await p.db.run('UPDATE docs SET parent_id = ?, sort = ? WHERE id = ?', parentId, sort, doc.id)
+    if (topicId !== doc.collection_id) {
+      await moveSubtreeToTopic(p, doc.id, topicId)
+      await p.cache.purge([`/c/${doc.collection_id}`, `/c/${topicId}`])
+    }
   }
   await p.cache.purge(docCacheKeys(doc.id))
   return c.json({ ok: true })

@@ -7,12 +7,14 @@ import type { WebsocketProvider } from 'y-websocket'
 import * as Y from 'yjs'
 import { tokenize } from '../../../server/src/lib/comment-text'
 import { api, formatTime, type User } from '../api'
+import { Avatar } from './Avatar'
 
 export interface Comment {
   id: string
   parentId: string | null
   authorId: string
   authorName: string | null
+  authorAvatar: string | null
   body: string
   anchor: string | null
   quote: string | null
@@ -411,6 +413,7 @@ function CommentItem({ c, names, canDelete, onDelete }: { c: Comment; names: Rec
   return (
     <div className="comment" id={`c-${c.id}`}>
       <div className="comment-head">
+        <Avatar id={c.authorId} name={c.authorName} src={c.authorAvatar} size={22} />
         <strong>{c.authorName ?? '已注销用户'}</strong>
         <span>{formatTime(c.createdAt)}</span>
         {canDelete && (

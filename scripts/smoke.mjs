@@ -100,8 +100,9 @@ r = await sendFrom(null)
 check('恢复默认后（不限制）可正常请求', r.status === 429 || r.status === 200, String(r.status))
 
 // ---- 可见性继承 ----
-const col = (await call('/api/collections', { cookie: alice, body: { name: '冒烟测试' } })).json.id
-const mk = async (title, parentId) => (await call('/api/docs', { cookie: alice, body: { collectionId: col, title, parentId } })).json.id
+const col = (await call('/api/topics', { cookie: alice, body: { name: '冒烟测试' } })).json.id
+const mk = async (title, parentId) => (await call('/api/docs', { cookie: alice, body: { topicId: col, title, parentId } })).json.id
+const topicDocs = async (cookie, topicId = col) => (await call('/api/tree', { cookie })).json.docs.filter((d) => d.topicId === topicId)
 const pub = await mk('公开文档')
 const prot = await mk('受保护父')
 await call(`/api/docs/${prot}`, { method: 'PATCH', cookie: alice, body: { visibility: 'protected' } })
@@ -110,10 +111,8 @@ await call(`/api/docs/${child}`, { method: 'PATCH', cookie: alice, body: { visib
 const draft = await mk('草稿')
 await call(`/api/docs/${draft}`, { method: 'PATCH', cookie: alice, body: { visibility: 'draft' } })
 
-r = await call(`/api/collections/${col}/tree`)
-check('匿名文档树只含公开文档', JSON.stringify(r.json.docs.map((d) => d.title)) === '["公开文档"]')
-r = await call(`/api/collections/${col}/tree`, { cookie: alice })
-check('作者可见全部文档', r.json.docs.length === 4)
+check('匿名文档树只含公开文档', JSON.stringify((await topicDocs()).map((d) => d.title)) === '["公开文档"]')
+check('作者可见全部文档', (await topicDocs(alice)).length === 4)
 check('匿名访问公开文档 200', (await call(`/d/${pub}`)).status === 200)
 check('受保护父下的“公开”子文档对匿名 401', (await call(`/d/${child}`)).status === 401)
 check('匿名访问草稿 404', (await call(`/d/${draft}`)).status === 404)
@@ -124,7 +123,7 @@ check('sitemap 只含公开文档', sitemap.includes(pub) && !sitemap.includes(c
 // ---- CSRF / 上传权限 ----
 const fd = new FormData()
 fd.append('name', 'x')
-r = await call('/api/collections', { cookie: alice, body: fd, headers: { origin: 'http://evil.example' } })
+r = await call('/api/topics', { cookie: alice, body: fd, headers: { origin: 'http://evil.example' } })
 check('跨站表单请求被拒绝', r.status === 403)
 const png = Uint8Array.from(
   atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='),
@@ -164,21 +163,21 @@ r = await setRole(bob, 'superuser')
 check('非法角色被忽略', r.status === 200 && (await call('/api/admin/users', { cookie: alice })).json.users.find((u) => u.id === bob.id).role === 'member')
 
 const as = (u, path, opts = {}) => call(path, { ...opts, cookie: u.cookie })
-r = await as(bob, '/api/docs', { body: { collectionId: col, title: 'x' } })
+r = await as(bob, '/api/docs', { body: { topicId: col, title: 'x' } })
 check('成员不能新建文档', r.status === 403)
 r = await as(bob, `/api/docs/${pub}`)
 check('成员只读', r.status === 200 && r.json.canEdit === false)
 check('成员不能修改文档', (await as(bob, `/api/docs/${pub}`, { method: 'PATCH', body: { title: 'x' } })).status === 403)
 check('成员看不到写文档入口', !(await as(bob, '/')).text.includes('href="/new"'))
 
-check('贡献者不能新建集合', (await as(carol, '/api/collections', { body: { name: 'x' } })).status === 403)
-r = await as(carol, '/api/docs', { body: { collectionId: col, title: '贡献者文档' } })
+check('贡献者不能新建主题', (await as(carol, '/api/topics', { body: { name: 'x' } })).status === 403)
+r = await as(carol, '/api/docs', { body: { topicId: col, title: '贡献者文档' } })
 check('贡献者可新建文档', r.status === 200)
 const cdoc = r.json?.id
 check('贡献者可修改自己的文档', (await as(carol, `/api/docs/${cdoc}`, { method: 'PATCH', body: { title: '改名' } })).status === 200)
 check('贡献者可发布自己的文档', (await as(carol, `/api/docs/${cdoc}`, { method: 'PATCH', body: { visibility: 'protected' } })).status === 200)
 check('贡献者不能修改他人文档', (await as(carol, `/api/docs/${pub}`, { method: 'PATCH', body: { title: 'x' } })).status === 403)
-r = await as(carol, '/api/docs', { body: { collectionId: col, title: '子', parentId: pub } })
+r = await as(carol, '/api/docs', { body: { title: '子', parentId: pub } })
 check('贡献者可在他人文档下新建子文档', r.status === 200)
 check('贡献者可删除自己的文档', (await as(carol, `/api/docs/${r.json?.id}`, { method: 'DELETE' })).status === 200)
 check('贡献者不能删除他人文档', (await as(carol, `/api/docs/${child}`, { method: 'DELETE' })).status === 403)
@@ -188,12 +187,12 @@ check('编辑不能把他人文档设为草稿', (await as(dave, `/api/docs/${cd
 check('编辑看不到他人草稿', (await as(dave, `/api/docs/${draft}`)).status === 404)
 check('编辑不能连同子文档删除', (await as(dave, `/api/docs/${prot}`, { method: 'DELETE' })).status === 400)
 check('编辑可删除他人文档', (await as(dave, `/api/docs/${cdoc}`, { method: 'DELETE' })).status === 200)
-check('编辑可新建集合', (await as(dave, '/api/collections', { body: { name: '编辑集合' } })).status === 200)
+check('编辑可新建主题', (await as(dave, '/api/topics', { body: { name: '编辑主题' } })).status === 200)
 check('编辑不能锁定文档', (await as(dave, `/api/docs/${pub}`, { method: 'PATCH', body: { locked: true } })).status === 403)
 
 await call(`/api/docs/${pub}`, { method: 'PATCH', cookie: alice, body: { locked: true } })
 check('锁定后编辑不能修改', (await as(dave, `/api/docs/${pub}`, { method: 'PATCH', body: { title: 'x' } })).status === 403)
-check('锁定后不能新建子文档', (await as(dave, '/api/docs', { body: { collectionId: col, parentId: pub } })).status === 403)
+check('锁定后不能新建子文档', (await as(dave, '/api/docs', { body: { parentId: pub } })).status === 403)
 check('锁定后管理员仍可修改', (await call(`/api/docs/${pub}`, { method: 'PATCH', cookie: alice, body: { title: '公开文档' } })).status === 200)
 
 // ---- 评论 ----
@@ -273,23 +272,58 @@ const daveCount = (await inbox(dave)).items.length
 await as(carol, `/api/comments/${ask}`, { method: 'DELETE' })
 check('删除评论后相关通知一并删除', (await inbox(dave)).items.length < daveCount)
 
+// ---- 主题 ----
+const topic2 = (await call('/api/topics', { cookie: alice, body: { name: '第二主题' } })).json.id
+check('不指定主题时新建到排在最前的主题', (await call('/api/docs', { cookie: alice, body: { title: '默认位置' } })).status === 200 && (await topicDocs(alice)).some((d) => d.title === '默认位置'))
+r = await call(`/api/docs/${prot}`, { method: 'PATCH', cookie: alice, body: { topicId: topic2 } })
+check('文档可以换主题，子文档跟随', r.status === 200 && (await topicDocs(alice, topic2)).map((d) => d.id).sort().join() === [prot, child].sort().join())
+check('换主题后出现在新主题页', (await call(`/c/${topic2}`, { cookie: alice })).text.includes('受保护父'))
+const moved = await mk('临时文档')
+r = await call(`/api/docs/${moved}`, { method: 'PATCH', cookie: alice, body: { parentId: prot } })
+check('移到其他主题的文档下时跟随父文档的主题', r.status === 200 && (await topicDocs(alice, topic2)).some((d) => d.id === moved && d.parentId === prot))
+await call(`/api/docs/${moved}`, { method: 'DELETE', cookie: alice })
+check('有文档的主题不能删除', (await call(`/api/topics/${topic2}`, { method: 'DELETE', cookie: alice })).status === 400)
+check('编辑不能删除主题', (await as(dave, `/api/topics/${topic2}`, { method: 'DELETE' })).status === 403)
+check('编辑可以重命名主题', (await as(dave, `/api/topics/${topic2}`, { method: 'PATCH', body: { name: '改名主题' } })).status === 200)
+await call(`/api/docs/${prot}`, { method: 'PATCH', cookie: alice, body: { topicId: col } })
+check('主题清空后可以删除', (await call(`/api/topics/${topic2}`, { method: 'DELETE', cookie: alice })).status === 200)
+check('删除后主题列表不再包含它', !(await call('/api/topics')).json.topics.some((t) => t.id === topic2))
+
+// ---- 头像 ----
+check('默认没有头像', (await call('/api/me', { cookie: carol.cookie })).json.user.avatar === null)
+const av = new FormData()
+av.append('file', new Blob([png], { type: 'image/png' }), 'me.png')
+r = await call('/api/me/avatar', { method: 'PUT', cookie: carol.cookie, body: av })
+const avatar = r.json?.avatar
+check('上传头像', r.status === 200 && /^\/uploads\/[a-z0-9]+$/.test(avatar ?? ''), avatar)
+check('头像对匿名可见', (await call(avatar)).status === 200)
+check('会话里带头像', (await call('/api/me', { cookie: carol.cookie })).json.user.avatar === avatar)
+await as(carol, `/api/docs/${pub}/comments`, { body: { body: '头像测试' } })
+check('评论带作者头像', (await as(carol, `/api/docs/${pub}/comments`)).json?.comments?.some((x) => x.authorAvatar === avatar))
+check('阅读页显示头像', (await call(`/d/${pub}`, { cookie: carol.cookie })).text.includes(`src="${avatar}"`))
+const av2 = new FormData()
+av2.append('file', new Blob([png], { type: 'image/png' }), 'me2.png')
+r = await call('/api/me/avatar', { method: 'PUT', cookie: carol.cookie, body: av2 })
+check('更换头像后旧图片被删除', r.status === 200 && (await call(avatar)).status === 404)
+check('恢复默认头像', (await call('/api/me/avatar', { method: 'DELETE', cookie: carol.cookie })).status === 200 && (await call('/api/me', { cookie: carol.cookie })).json.user.avatar === null)
+check('非图片不能作为头像', (await call('/api/me/avatar', { method: 'PUT', cookie: carol.cookie, body: (() => { const f = new FormData(); f.append('file', new Blob(['x'], { type: 'text/plain' }), 'a.txt'); return f })() })).status === 400)
+
 // ---- 首页文档 ----
 const isHome = (html) => html.includes('data-page="home"')
-check('没有首页文档时显示集合列表', !isHome((await call('/')).text) && (await call('/c')).text.includes('冒烟测试'))
+check('没有首页文档时显示主题列表', !isHome((await call('/')).text) && (await call('/c')).text.includes('冒烟测试'))
 check('非管理员不能创建首页文档', (await as(bob, '/api/admin/site/home', { method: 'POST' })).status === 403)
 check('管理员创建首页文档', (await call('/api/admin/site/home', { method: 'POST', cookie: alice })).status === 200)
 check('创建后匿名首页立即显示首页文档（缓存已清除）', isHome((await call('/')).text))
 r = await call('/d/index')
 check('/d/index 跳转到首页', r.status === 302 && r.location === '/')
-const homeCol = (await call('/api/docs/index', { cookie: alice })).json?.doc?.collectionId
-r = await call(`/api/collections/${homeCol}/tree`, { cookie: alice })
-check('首页文档不出现在文档树和集合列表中', homeCol && !r.json.docs.some((d) => d.id === 'index') && !(await call('/c', { cookie: alice })).text.includes('/d/index'))
-check('首页文档不能有子文档', (await call('/api/docs', { cookie: alice, body: { collectionId: homeCol, title: 'x', parentId: 'index' } })).status === 403)
+r = await call('/api/tree', { cookie: alice })
+check('首页文档不出现在文档树和主题列表中', !r.json.docs.some((d) => d.id === 'index') && !(await call('/c', { cookie: alice })).text.includes('/d/index'))
+check('首页文档不能有子文档', (await call('/api/docs', { cookie: alice, body: { title: 'x', parentId: 'index' } })).status === 403)
 check('首页文档不能移动', (await call('/api/docs/index', { method: 'PATCH', cookie: alice, body: { parentId: pub } })).status === 400)
 await call('/api/docs/index', { method: 'PATCH', cookie: alice, body: { visibility: 'protected' } })
-check('首页文档无权阅读时回退到集合列表', !isHome((await call('/')).text) && isHome((await call('/', { cookie: alice })).text))
+check('首页文档无权阅读时回退到主题列表', !isHome((await call('/')).text) && isHome((await call('/', { cookie: alice })).text))
 await call('/api/docs/index', { method: 'DELETE', cookie: alice })
-check('删除首页文档后恢复集合列表', !isHome((await call('/', { cookie: alice })).text))
+check('删除首页文档后恢复主题列表', !isHome((await call('/', { cookie: alice })).text))
 
 // ---- 验证码邮件模板 ----
 const tpl = (body) => call('/api/admin/mail-template', { method: 'PUT', cookie: alice, body })

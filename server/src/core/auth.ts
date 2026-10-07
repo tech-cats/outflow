@@ -25,7 +25,7 @@ export async function createSession(p: Platform, userId: string): Promise<string
 export async function getSessionUser(p: Platform, token: string | undefined): Promise<User | null> {
   if (!token || token.length > 100) return null
   return p.db.get<User>(
-    `SELECT u.id, u.email, u.name, u.role FROM sessions s JOIN users u ON u.id = s.user_id
+    `SELECT u.id, u.email, u.name, u.role, u.avatar FROM sessions s JOIN users u ON u.id = s.user_id
      WHERE s.id = ? AND s.expires_at > ? AND u.disabled = 0`,
     await sha256Hex(token),
     Date.now(),

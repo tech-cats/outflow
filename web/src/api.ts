@@ -38,6 +38,8 @@ export interface User {
   email: string
   name: string
   role: Role
+  /** 头像地址；为空时显示用户名首字 */
+  avatar?: string | null
 }
 
 export interface AppConfig {
@@ -54,16 +56,16 @@ export interface AppConfig {
   captcha: { provider: 'altcha' | 'turnstile' | 'hcaptcha' | 'none'; siteKey: string }
 }
 
-export interface Collection {
+/** 主题：文档的轻量分组 */
+export interface Topic {
   id: string
   name: string
-  description: string
-  defaultVisibility: Visibility
+  sort: number
 }
 
 export interface DocMeta {
   id: string
-  collectionId: string
+  topicId: string
   parentId: string | null
   title: string
   visibility: Visibility
@@ -86,7 +88,8 @@ export function formatTime(ts: number): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-export async function createDoc(collectionId: string, parentId: string | null): Promise<string> {
-  const { id } = await api<{ id: string }>('/docs', { body: { collectionId, parentId } })
+/** 新建文档：有父文档时跟随父文档的主题；都不指定时放进排在最前的主题 */
+export async function createDoc(at: { topicId?: string | null; parentId?: string | null } = {}): Promise<string> {
+  const { id } = await api<{ id: string }>('/docs', { body: at })
   return id
 }

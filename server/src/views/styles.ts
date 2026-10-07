@@ -64,7 +64,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .brand-icon { width: 22px; height: 22px; border-radius: 6px; object-fit: cover; display: block; }
 .topbar .search { flex: 1; max-width: 420px; margin: 0; }
 .topbar .spacer { flex: 1; }
-.topbar .nav { display: flex; align-items: center; gap: 12px; font-size: 14px; }
+.topbar .nav { display: flex; align-items: center; gap: 12px; font-size: 14px; white-space: nowrap; min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .topbar .nav a, .topbar .nav button.link { color: var(--fg-soft); }
 .topbar .nav a.btn-primary { color: var(--accent-fg); }
 .theme-toggle { border: 0; background: none; cursor: pointer; width: 30px; height: 30px; border-radius: 8px; color: var(--fg-soft); font-size: 16px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; }
@@ -125,6 +125,20 @@ button.link { background: none; border: 0; padding: 0; cursor: pointer; color: v
 .prose hr { border: 0; border-top: 1px solid var(--border); margin: 2em 0; }
 .prose img { max-width: 100%; border-radius: 6px; }
 .prose a { text-decoration: underline; text-underline-offset: 2px; }
+.avatar { display: inline-flex; align-items: center; justify-content: center; flex: none; border-radius: 50%; color: #fff; font-weight: 600; line-height: 1; object-fit: cover; vertical-align: middle; user-select: none; }
+.me { display: inline-flex; align-items: center; gap: 6px; color: var(--fg-soft); }
+.me:hover { text-decoration: none; color: var(--fg); }
+.doc-editor { display: inline-flex; align-items: center; gap: 6px; }
+.comment-head .avatar { margin-right: 2px; }
+@media (max-width: 640px) { .me span { display: none; } .topbar .search { min-width: 72px; } }
+/* 引导卡片：阅读页与编辑器共用 */
+.guide-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin: 1.2em 0; }
+.prose a.guide-card, .guide-card { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); color: var(--fg); text-decoration: none; transition: border-color .15s, box-shadow .15s, transform .15s; }
+.prose a.guide-card:hover { border-color: var(--accent); box-shadow: var(--shadow); transform: translateY(-1px); text-decoration: none; }
+.guide-icon { font-size: 24px; line-height: 1.2; flex: none; }
+.guide-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.guide-body strong { font-size: 15px; }
+.guide-body > span { color: var(--fg-muted); font-size: 13px; line-height: 1.5; }
 .prose ul.task-list, .prose ul[data-type="taskList"] { list-style: none; padding-left: .2em; }
 .prose li.task-item, .prose ul[data-type="taskList"] li { display: flex; gap: .5em; align-items: flex-start; }
 .prose li.task-item input, .prose ul[data-type="taskList"] li > label { margin-top: .45em; }
@@ -159,7 +173,7 @@ button.link { background: none; border: 0; padding: 0; cursor: pointer; color: v
 .discussion h2 { font-size: 18px; margin: 0 0 12px; }
 .thread { padding: 12px 0; border-bottom: 1px solid var(--border); }
 .thread .comment + .comment { margin: 10px 0 0 16px; padding-left: 12px; border-left: 2px solid var(--border); }
-.comment-head { display: flex; align-items: baseline; gap: 8px; font-size: 13px; color: var(--fg-muted); }
+.comment-head { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--fg-muted); }
 .comment-head strong { color: var(--fg); font-weight: 600; }
 .comment-del { margin-left: auto; font-size: 12px; color: var(--fg-muted) !important; }
 .comment-body { margin-top: 2px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }

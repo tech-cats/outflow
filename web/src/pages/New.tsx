@@ -1,27 +1,15 @@
 import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
-import { VIS_HINT, VIS_LABEL, api, createDoc, hasRole, type Collection, type Visibility } from '../api'
+import { createDoc, hasRole } from '../api'
 import { Topbar } from '../components/Topbar'
 import { useSession } from '../session'
 
-/** /new：选择集合后创建文档；带 ?collection= 时直接创建并跳转到编辑器 */
+/** /new：直接新建文档并进入编辑器，主题可以之后在编辑器里调整；?topic= 或 ?parent= 指定位置 */
 export function NewPage() {
   const { user, loading } = useSession()
   const navigate = useNavigate()
-  const [collections, setCollections] = useState<Collection[] | null>(null)
-  const [name, setName] = useState('')
-  const [vis, setVis] = useState<Visibility>('public')
   const [error, setError] = useState('')
   const started = useRef(false)
-
-  const go = async (collectionId: string, parentId: string | null = null) => {
-    try {
-      const id = await createDoc(collectionId, parentId)
-      navigate({ to: '/edit/$id', params: { id }, replace: true })
-    } catch (e) {
-      setError((e as Error).message)
-    }
-  }
 
   useEffect(() => {
     if (loading) return
@@ -29,66 +17,23 @@ export function NewPage() {
       location.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}`
       return
     }
-    if (!hasRole(user, 'contributor')) return
+    if (!hasRole(user, 'contributor') || started.current) return
+    started.current = true
     const q = new URLSearchParams(location.search)
-    const col = q.get('collection')
-    if (col && !started.current) {
-      started.current = true
-      void go(col, q.get('parent'))
-      return
-    }
-    api<{ collections: Collection[] }>('/collections').then((r) => setCollections(r.collections))
+    createDoc({ topicId: q.get('topic'), parentId: q.get('parent') })
+      .then((id) => navigate({ to: '/edit/$id', params: { id }, replace: true }))
+      .catch((e: Error) => setError(e.message))
   }, [loading, user])
-
-  const createCollection = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-    try {
-      const { id } = await api<{ id: string }>('/collections', { body: { name, defaultVisibility: vis } })
-      await go(id)
-    } catch (err) {
-      setError((err as Error).message)
-    }
-  }
 
   return (
     <>
       <Topbar />
-      <main className="container" style={{ maxWidth: 640 }}>
-        <h1 style={{ fontSize: 22 }}>新建文档</h1>
+      <main className="container">
         {error && <div className="form-error">{error}</div>}
-        {user && !hasRole(user, 'contributor') && <div className="card empty">你目前只能阅读和评论。如需写文档，请联系管理员调整角色。</div>}
-        {collections && collections.length > 0 && (
-          <>
-            <p className="muted">选择要放入的集合：</p>
-            <div className="pick-list">
-              {collections.map((c) => (
-                <button key={c.id} className="card pick" onClick={() => go(c.id)}>
-                  <strong>{c.name}</strong>
-                  {c.description && <span className="muted small">{c.description}</span>}
-                </button>
-              ))}
-            </div>
-          </>
+        {user && !hasRole(user, 'contributor') && (
+          <div className="card empty">你目前只能阅读和评论。如需写文档，请联系管理员调整角色。</div>
         )}
-        {collections && collections.length === 0 && !hasRole(user, 'editor') && <p className="muted">还没有任何集合，请联系编辑或管理员创建。</p>}
-        {collections && hasRole(user, 'editor') && (
-          <form className="card form" style={{ marginTop: 24 }} onSubmit={createCollection}>
-            <strong>{collections.length ? '或者新建一个集合' : '先创建一个集合'}</strong>
-            <input className="input" placeholder="集合名称，如「课程笔记」" required maxLength={60} value={name} onChange={(e) => setName(e.target.value)} />
-            <label className="field">
-              <span>新文档默认可见性</span>
-              <select className="input" value={vis} onChange={(e) => setVis(e.target.value as Visibility)}>
-                {(['public', 'protected'] as Visibility[]).map((v) => (
-                  <option key={v} value={v}>
-                    {VIS_LABEL[v]} —— {VIS_HINT[v]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button className="btn btn-primary">创建集合并新建文档</button>
-          </form>
-        )}
+        {!error && hasRole(user, 'contributor') && <p className="muted">正在新建文档…</p>}
       </main>
     </>
   )

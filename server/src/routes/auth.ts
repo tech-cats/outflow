@@ -133,7 +133,7 @@ auth.post('/auth/register', rateLimit('auth'), async (c) => {
     Date.now(),
   )
   setSessionCookie(c, await createSession(p, id))
-  return c.json({ user: { id, email, name, role: first ? 'admin' : 'member' } })
+  return c.json({ user: { id, email, name, role: first ? 'admin' : 'member', avatar: null } })
 })
 
 auth.post('/auth/login', rateLimit('auth'), async (c) => {

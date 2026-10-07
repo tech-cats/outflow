@@ -3,6 +3,7 @@ import { api, hasRole } from '../api'
 import { pluginNav } from '../plugins'
 import { useSession } from '../session'
 import { toggleTheme } from '../theme'
+import { Avatar } from './Avatar'
 import { BrandMark } from './BrandMark'
 
 /** 与服务端阅读页保持一致的顶栏；跳到阅读页一律用整页导航 */
@@ -41,7 +42,10 @@ export function Topbar({ children }: { children?: React.ReactNode }) {
               通知{unread > 0 && <span className="bell-count">{unread > 99 ? '99+' : unread}</span>}
             </a>
             {user.role === 'admin' && <a href="/admin">管理</a>}
-            <span className="muted">{user.name}</span>
+            <a href="/account" className="me" title="个人设置">
+              <Avatar id={user.id} name={user.name} src={user.avatar} size={24} />
+              <span>{user.name}</span>
+            </a>
             <button
               className="link"
               onClick={async () => {

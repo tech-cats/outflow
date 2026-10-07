@@ -91,6 +91,7 @@ const BLOCKS = new Set([
 
 export function jsonToText(node: PMNode): string {
   if (node.type === 'text') return node.text ?? ''
+  if (node.type === 'guideCard') return [cardAttr(node, 'title'), cardAttr(node, 'desc')].filter(Boolean).join(' ') + '\n'
   if (node.type === 'hardBreak') return '\n'
   const inner = (node.content ?? []).map(jsonToText).join('')
   return BLOCKS.has(node.type) ? inner + '\n' : inner
@@ -115,6 +116,25 @@ export function safeUrl(url: unknown, kind: 'link' | 'image'): string | null {
   if (u.startsWith('#')) return u
   if (kind === 'link' && /^mailto:/i.test(u)) return u
   return null
+}
+
+/** 引导卡片的属性（编辑器里都是字符串，这里防御一下） */
+function cardAttr(n: PMNode, k: 'icon' | 'title' | 'desc' | 'href'): string {
+  const v = n.attrs?.[k]
+  return typeof v === 'string' ? v.trim() : ''
+}
+
+/** 与编辑器中 web/src/editor/GuideCards.tsx 的结构一致 */
+function guideCardHtml(n: PMNode): string {
+  const icon = cardAttr(n, 'icon')
+  const desc = cardAttr(n, 'desc')
+  const body =
+    (icon ? `<span class="guide-icon">${escapeHtml(icon)}</span>` : '') +
+    `<span class="guide-body"><strong>${escapeHtml(cardAttr(n, 'title') || '未命名卡片')}</strong>${desc ? `<span>${escapeHtml(desc)}</span>` : ''}</span>`
+  const href = safeUrl(cardAttr(n, 'href'), 'link')
+  if (!href) return `<div class="guide-card">${body}</div>`
+  const external = /^https?:/i.test(href) ? ' rel="noopener nofollow ugc" target="_blank"' : ''
+  return `<a class="guide-card" href="${escapeHtml(href)}"${external}>${body}</a>`
 }
 
 function renderMarks(text: string, marks: PMMark[] = []): string {
@@ -163,6 +183,8 @@ export function jsonToHtml(node: PMNode): string {
       return `<pre><code${lang ? ` class="language-${lang}"` : ''}>${escapeHtml(code)}</code></pre>`
     }
     case 'horizontalRule': return '<hr>'
+    case 'guideCards': return `<div class="guide-cards">${inner()}</div>`
+    case 'guideCard': return guideCardHtml(node)
     case 'hardBreak': return '<br>'
     case 'image': {
       const src = safeUrl(a.src, 'image')
@@ -210,6 +232,15 @@ function mdBlock(n: PMNode, indent: string): string {
       return `${indent}\`\`\`${a.language ?? ''}\n${(n.content ?? []).map((c) => c.text).join('')}\n${indent}\`\`\``
     case 'horizontalRule': return indent + '---'
     case 'image': return indent + mdInline([n])
+    case 'guideCards':
+      return (n.content ?? [])
+        .map((c) => {
+          const title = cardAttr(c, 'title') || '未命名卡片'
+          const href = safeUrl(cardAttr(c, 'href'), 'link')
+          const desc = cardAttr(c, 'desc')
+          return `${indent}- ${[cardAttr(c, 'icon'), href ? `[${title}](${href})` : title].filter(Boolean).join(' ')}${desc ? `：${desc}` : ''}`
+        })
+        .join('\n')
     case 'bulletList':
     case 'orderedList':
     case 'taskList': {

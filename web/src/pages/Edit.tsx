@@ -9,7 +9,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { WebsocketProvider } from 'y-websocket'
 import * as Y from 'yjs'
-import { ApiError, VIS_HINT, VIS_LABEL, api, createDoc, formatTime, hasRole, type DocMeta, type User, type Visibility } from '../api'
+import { ApiError, VIS_HINT, VIS_LABEL, api, createDoc, formatTime, hasRole, type DocMeta, type Topic, type User, type Visibility } from '../api'
 import {
   CommentAnchors,
   Discussion,
@@ -23,15 +23,25 @@ import {
   type CommentsApi,
   type PendingNote,
 } from '../components/Comments'
+import { Avatar } from '../components/Avatar'
 import { DocTree } from '../components/DocTree'
+import { GuideCard, GuideCards } from '../editor/GuideCards'
 import { docPanels } from '../plugins'
 import { Toolbar } from '../components/Toolbar'
 import { Topbar } from '../components/Topbar'
 import { useSession } from '../session'
 
+/** 协作者（来自 awareness；旧版本客户端没有 id 和 avatar） */
+interface Peer {
+  id?: string
+  name: string
+  color: string
+  avatar?: string | null
+}
+
 interface DocDetail {
   doc: DocMeta & { effectiveVisibility: Visibility; authorName: string | null; updatedByName: string | null }
-  collection: { id: string; name: string }
+  topic: { id: string; name: string } | null
   breadcrumbs: { id: string; title: string }[]
   canEdit: boolean
   canDraft: boolean
@@ -54,7 +64,7 @@ export function EditPage({ id }: { id: string }) {
   const { user, loading } = useSession()
   const navigate = useNavigate()
   const [detail, setDetail] = useState<DocDetail | null>(null)
-  const [tree, setTree] = useState<DocMeta[]>([])
+  const [tree, setTree] = useState<{ topics: Topic[]; docs: DocMeta[] }>({ topics: [], docs: [] })
   const [error, setError] = useState('')
   const [panel, setPanel] = useState<'none' | 'history' | 'settings'>('none')
 
@@ -62,8 +72,7 @@ export function EditPage({ id }: { id: string }) {
     try {
       const d = await api<DocDetail>(`/docs/${id}`)
       setDetail(d)
-      const t = await api<{ docs: DocMeta[] }>(`/collections/${d.collection.id}/tree`)
-      setTree(t.docs)
+      setTree(await api<{ topics: Topic[]; docs: DocMeta[] }>('/tree'))
     } catch (e) {
       const err = e as ApiError
       if (err.status === 401) location.href = `/login?next=${encodeURIComponent(location.pathname)}`
@@ -82,15 +91,12 @@ export function EditPage({ id }: { id: string }) {
   }, [loading, user])
 
   const refreshTree = useCallback(async () => {
-    if (!detail) return
-    const t = await api<{ docs: DocMeta[] }>(`/collections/${detail.collection.id}/tree`)
-    setTree(t.docs)
-  }, [detail])
+    setTree(await api<{ topics: Topic[]; docs: DocMeta[] }>('/tree'))
+  }, [])
 
-  const addChild = async (parentId: string | null) => {
-    if (!detail) return
+  const addDoc = async (at: { topicId?: string; parentId?: string }) => {
     try {
-      const nid = await createDoc(detail.collection.id, parentId)
+      const nid = await createDoc(at)
       navigate({ to: '/edit/$id', params: { id: nid } })
     } catch (e) {
       alert((e as Error).message)
@@ -117,30 +123,39 @@ export function EditPage({ id }: { id: string }) {
       <Topbar />
       <div className="layout">
         <aside className="sidebar">
-          <h3>
-            <a href={`/c/${detail.collection.id}`} style={{ color: 'inherit' }}>
-              {detail.collection.name}
-            </a>
-            {hasRole(user, 'contributor') && (
-              <button className="tree-add visible" title="新建顶级文档" onClick={() => addChild(null)}>
-                +
-              </button>
-            )}
-          </h3>
           <DocTree
-            docs={tree}
+            topics={tree.topics}
+            docs={tree.docs}
             activeId={id}
             canAdd={(d) => hasRole(user, 'contributor') && (!d.locked || user.role === 'admin')}
             canMove={(d) => canEditDoc(user, d)}
+            canAddTop={hasRole(user, 'contributor')}
             onOpen={(nid) => navigate({ to: '/edit/$id', params: { id: nid } })}
-            onAddChild={addChild}
-            onChanged={refreshTree}
+            onAdd={addDoc}
+            onChanged={() => void load()}
           />
+          {hasRole(user, 'editor') && (
+            <button
+              className="link small tree-new-topic"
+              onClick={async () => {
+                const name = prompt('新主题名称')?.trim()
+                if (!name) return
+                try {
+                  await api('/topics', { body: { name } })
+                  void refreshTree()
+                } catch (e) {
+                  alert((e as Error).message)
+                }
+              }}
+            >
+              + 新建主题
+            </button>
+          )}
         </aside>
         <main className="main">
           <div className="article">
             <nav className="crumbs">
-              <a href={`/c/${detail.collection.id}`}>{detail.collection.name}</a>
+              {detail.topic && <a href={`/c/${detail.topic.id}`}>{detail.topic.name}</a>}
               {detail.breadcrumbs.map((b) => (
                 <span key={b.id}>
                   <span>/ </span>
@@ -151,6 +166,7 @@ export function EditPage({ id }: { id: string }) {
             <DocEditor
               key={id}
               detail={detail}
+              topics={tree.topics}
               user={user}
               panel={panel}
               setPanel={setPanel}
@@ -170,6 +186,7 @@ export function EditPage({ id }: { id: string }) {
 
 function DocEditor(props: {
   detail: DocDetail
+  topics: Topic[]
   user: User
   panel: 'none' | 'history' | 'settings'
   setPanel(p: 'none' | 'history' | 'settings'): void
@@ -180,7 +197,7 @@ function DocEditor(props: {
   const doc = detail.doc
   const [collab, setCollab] = useState<{ ydoc: Y.Doc; provider: WebsocketProvider } | null>(null)
   const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
-  const [peers, setPeers] = useState<{ name: string; color: string }[]>([])
+  const [peers, setPeers] = useState<Peer[]>([])
 
   useEffect(() => {
     const ydoc = new Y.Doc()
@@ -188,7 +205,7 @@ function DocEditor(props: {
     const provider = new WebsocketProvider(`${proto}//${location.host}/api/collab`, doc.id, ydoc)
     provider.on('status', ({ status }: { status: 'connecting' | 'connected' | 'disconnected' }) => setStatus(status))
     const onAwareness = () => {
-      const list: { name: string; color: string }[] = []
+      const list: Peer[] = []
       provider.awareness.getStates().forEach((s, cid) => {
         if (cid !== ydoc.clientID && s.user) list.push(s.user)
       })
@@ -210,7 +227,7 @@ function DocEditor(props: {
 function DocBody(props: Parameters<typeof DocEditor>[0] & {
   collab: { ydoc: Y.Doc; provider: WebsocketProvider }
   status: string
-  peers: { name: string; color: string }[]
+  peers: Peer[]
 }) {
   const { detail, user, collab } = props
   const doc = detail.doc
@@ -252,13 +269,14 @@ function DocBody(props: Parameters<typeof DocEditor>[0] & {
 
 function DocHeader(props: {
   detail: DocDetail
+  topics: Topic[]
   user: User
   panel: 'none' | 'history' | 'settings'
   setPanel(p: 'none' | 'history' | 'settings'): void
   onMetaChange(): void
   onTitleSaved(): void
   status: string
-  peers: { name: string; color: string }[]
+  peers: Peer[]
   notes: { count: number; open: boolean; toggle(): void }
 }) {
   const { detail, user } = props
@@ -294,7 +312,7 @@ function DocHeader(props: {
     if (!confirm(`确定删除「${doc.title || '无标题'}」？${user.role === 'admin' ? '子文档也会一并删除。' : ''}此操作不可撤销。`)) return
     try {
       await api(`/docs/${doc.id}`, { method: 'DELETE' })
-      location.href = `/c/${doc.collectionId}`
+      location.href = `/c/${doc.topicId}`
     } catch (e) {
       alert((e as Error).message)
     }
@@ -339,8 +357,8 @@ function DocHeader(props: {
         <span className={`sync ${props.status}`}>{saving ? '保存中…' : statusText}</span>
         <span className="peers">
           {props.peers.map((p, i) => (
-            <span key={i} className="peer" style={{ background: p.color }} title={p.name}>
-              {p.name.slice(0, 1)}
+            <span key={i} className="peer" style={{ borderColor: p.color }} title={p.name}>
+              <Avatar id={p.id ?? p.name} name={p.name} src={p.avatar} size={22} />
             </span>
           ))}
         </span>
@@ -372,6 +390,23 @@ function DocHeader(props: {
                     <small>{VIS_HINT[v]}</small>
                   </button>
                 ))}
+                {detail.canEdit && doc.id !== 'index' && props.topics.length > 1 && (
+                  <>
+                    <div className="menu-sep" />
+                    <div className="menu-label">主题</div>
+                    {props.topics.map((t) => (
+                      <button
+                        key={t.id}
+                        className={`menu-item${doc.topicId === t.id ? ' on' : ''}`}
+                        disabled={doc.topicId === t.id}
+                        onClick={() => patch({ topicId: t.id })}
+                      >
+                        <span>{t.name}</span>
+                      </button>
+                    ))}
+                    {doc.parentId && <div className="menu-label small">换主题后本文会变成该主题下的顶级文档</div>}
+                  </>
+                )}
                 <div className="menu-sep" />
                 {user.role === 'admin' && (
                   <button className="menu-item" onClick={() => patch({ locked: !doc.locked })}>
@@ -463,9 +498,11 @@ function CollabEditor({
         Image,
         TaskList,
         TaskItem.configure({ nested: true }),
+        GuideCards,
+        GuideCard,
         Placeholder.configure({ placeholder: '开始写作…（支持 Markdown 快捷输入，如 # 标题、- 列表、``` 代码块）' }),
         Collaboration.configure({ document: ydoc }),
-        CollaborationCaret.configure({ provider, user: { name: user.name, color: colorFor(user.id) } }),
+        CollaborationCaret.configure({ provider, user: { id: user.id, name: user.name, color: colorFor(user.id), avatar: user.avatar ?? null } }),
         CommentAnchors.configure({ onActivate: (id) => activateRef.current(id) }),
       ],
       editorProps: {

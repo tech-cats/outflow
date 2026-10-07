@@ -6,6 +6,7 @@ export interface CommentJson {
   parentId: string | null
   authorId: string
   authorName: string | null
+  authorAvatar: string | null
   body: string
   anchor: string | null
   quote: string | null
@@ -23,13 +24,14 @@ export async function listComments(db: DB, docId: string): Promise<CommentJson[]
     parent_id: string | null
     author_id: string
     author_name: string | null
+    author_avatar: string | null
     body: string
     anchor: string | null
     quote: string | null
     resolved: number
     created_at: number
   }>(
-    `SELECT c.id, c.parent_id, c.author_id, u.name AS author_name, c.body, c.anchor, c.quote, c.resolved, c.created_at
+    `SELECT c.id, c.parent_id, c.author_id, u.name AS author_name, u.avatar AS author_avatar, c.body, c.anchor, c.quote, c.resolved, c.created_at
      FROM comments c LEFT JOIN users u ON u.id = c.author_id
      WHERE c.doc_id = ? ORDER BY c.created_at LIMIT 2000`,
     docId,
@@ -39,6 +41,7 @@ export async function listComments(db: DB, docId: string): Promise<CommentJson[]
     parentId: r.parent_id,
     authorId: r.author_id,
     authorName: r.author_name,
+    authorAvatar: r.author_avatar,
     body: r.body,
     anchor: r.anchor,
     quote: r.quote,

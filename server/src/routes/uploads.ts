@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import { chainReadable, hasRole, loadChain } from '../core/access'
 import { newId } from '../lib/crypto'
 import type { AppEnv } from '../types'
@@ -16,29 +17,24 @@ const IMAGE_TYPES: Record<string, string> = {
 /** 上传接口挂在 /api 下 */
 export const uploadApi = new Hono<AppEnv>()
 
-uploadApi.post('/uploads', requireUser, rateLimit('write'), async (c) => {
+/** 校验并保存一张图片，返回 /uploads/<id>；不带 docId 的是公开图片。失败时返回错误响应 */
+async function saveImage(
+  c: Context<AppEnv>,
+  file: unknown,
+  docId: string | null,
+): Promise<{ url: string; id: string } | { res: Response }> {
   const p = c.var.p
-  const form = await c.req.parseBody()
-  const file = form.file
-  const docId = typeof form.docId === 'string' ? form.docId : ''
-  if (!(file instanceof File)) return fail(c, 400, '缺少文件')
+  if (!(file instanceof File)) return { res: fail(c, 400, '缺少文件') }
   const ext = IMAGE_TYPES[file.type]
-  if (!ext) return fail(c, 400, '仅支持 PNG / JPEG / GIF / WebP / AVIF 图片')
-  if (file.size > p.config.maxUploadBytes) return fail(c, 413, '文件过大')
-  // 不带 docId 的是公开图片（如插件里的地点照片），只有编辑及以上可以上传
-  if (docId) {
-    const r = await loadDoc(c, docId, 'edit')
-    if (r.res) return r.res
-  } else if (!hasRole(c.var.user, 'editor')) {
-    return fail(c, 403, '需要编辑及以上权限')
-  }
+  if (!ext) return { res: fail(c, 400, '仅支持 PNG / JPEG / GIF / WebP / AVIF 图片') }
+  if (file.size > p.config.maxUploadBytes) return { res: fail(c, 413, '文件过大') }
   const id = newId(16)
   const key = `u/${id}.${ext}`
   await p.storage.put(key, await file.arrayBuffer(), file.type)
   await p.db.run(
     'INSERT INTO uploads (id, doc_id, key, content_type, size, created_by, created_at, public) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     id,
-    docId || null,
+    docId,
     key,
     file.type,
     file.size,
@@ -46,7 +42,49 @@ uploadApi.post('/uploads', requireUser, rateLimit('write'), async (c) => {
     Date.now(),
     docId ? 0 : 1,
   )
-  return c.json({ url: `/uploads/${id}` })
+  return { url: `/uploads/${id}`, id }
+}
+
+/** 删除一张上传的图片（文件和记录） */
+async function deleteImage(c: Context<AppEnv>, url: string | null | undefined) {
+  const id = url?.match(/^\/uploads\/([a-z0-9]+)$/)?.[1]
+  if (!id) return
+  const up = await c.var.p.db.get<{ key: string }>('SELECT key FROM uploads WHERE id = ?', id)
+  if (!up) return
+  await c.var.p.storage.delete(up.key)
+  await c.var.p.db.run('DELETE FROM uploads WHERE id = ?', id)
+}
+
+uploadApi.post('/uploads', requireUser, rateLimit('write'), async (c) => {
+  const form = await c.req.parseBody()
+  const docId = typeof form.docId === 'string' ? form.docId : ''
+  // 不带 docId 的是公开图片（如插件里的地点照片），只有编辑及以上可以上传
+  if (docId) {
+    const r = await loadDoc(c, docId, 'edit')
+    if (r.res) return r.res
+  } else if (!hasRole(c.var.user, 'editor')) {
+    return fail(c, 403, '需要编辑及以上权限')
+  }
+  const r = await saveImage(c, form.file, docId || null)
+  return 'res' in r ? r.res : c.json({ url: r.url })
+})
+
+/* ---------------- 头像 ---------------- */
+
+uploadApi.put('/me/avatar', requireUser, rateLimit('write'), async (c) => {
+  const r = await saveImage(c, (await c.req.parseBody()).file, null)
+  if ('res' in r) return r.res
+  const user = c.var.user!
+  await c.var.p.db.run('UPDATE users SET avatar = ? WHERE id = ?', r.url, user.id)
+  await deleteImage(c, user.avatar)
+  return c.json({ avatar: r.url })
+})
+
+uploadApi.delete('/me/avatar', requireUser, rateLimit('write'), async (c) => {
+  const user = c.var.user!
+  await c.var.p.db.run('UPDATE users SET avatar = NULL WHERE id = ?', user.id)
+  await deleteImage(c, user.avatar)
+  return c.json({ ok: true })
 })
 
 /** 文件访问挂在根路径 /uploads/:id，权限跟随所属文档 */

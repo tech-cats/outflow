@@ -7,11 +7,12 @@ import { listComments } from '../core/comments'
 import { mentionNames } from '../core/notify'
 import { searchDocs } from '../core/search'
 import { HOME_DOC_ID } from '../core/site'
+import { listTopics } from '../core/topics'
 import { escapeHtml, jsonToHtml } from '../lib/prosemirror'
 import type { AppEnv, PMNode } from '../types'
 import { renderDocSections } from '../plugins/host'
 import { Discussion } from '../views/comments'
-import { Layout, Time, Tree, VisBadge } from '../views/layout'
+import { Avatar, Layout, Time, Tree, VisBadge } from '../views/layout'
 import { rateLimit, siteInfo } from './util'
 
 const pages = new Hono<AppEnv>()
@@ -70,7 +71,7 @@ async function readableDocs(c: Context<AppEnv>) {
   )
 }
 
-function RecentList({ docs, colName }: { docs: TreeRow[]; colName: Map<string, string> }) {
+function RecentList({ docs, topicName }: { docs: TreeRow[]; topicName: Map<string, string> }) {
   return (
     <ul class="list">
       {docs.map((d) => (
@@ -78,7 +79,7 @@ function RecentList({ docs, colName }: { docs: TreeRow[]; colName: Map<string, s
           <a href={`/d/${d.id}`} style="flex:1">
             {d.title || '无标题'}
           </a>
-          <span class="muted small">{colName.get(d.collection_id)}</span>
+          <span class="muted small">{topicName.get(d.collection_id)}</span>
           <span class="muted small">
             <Time ts={d.updated_at} />
           </span>
@@ -88,15 +89,12 @@ function RecentList({ docs, colName }: { docs: TreeRow[]; colName: Map<string, s
   )
 }
 
-/** 集合列表：没有首页文档时作为首页，同时也是 /c 页面 */
+/** 主题列表：没有首页文档时作为首页，同时也是 /c 页面 */
 async function renderIndex(c: Context<AppEnv>, title: string): Promise<Response> {
-  const db = c.var.p.db
-  const [collections, readable] = await Promise.all([
-    db.all<{ id: string; name: string; description: string }>('SELECT id, name, description FROM collections ORDER BY sort, created_at'),
-    readableDocs(c),
-  ])
+  const [topics, readable] = await Promise.all([listTopics(c.var.p), readableDocs(c)])
   const recent = [...readable].sort((a, b) => b.updated_at - a.updated_at).slice(0, 10)
-  const colName = new Map(collections.map((x) => [x.id, x.name]))
+  const topicName = new Map(topics.map((x) => [x.id, x.name]))
+  const shown = topics.filter((t) => readable.some((d) => d.collection_id === t.id))
   return await c.html(
     <Layout {...(await layoutProps(c))} title={title} description={(await siteInfo(c)).description || undefined}>
       <main class="container">
@@ -105,37 +103,31 @@ async function renderIndex(c: Context<AppEnv>, title: string): Promise<Response>
             {title}
           </h1>
         )}
-        {collections.length === 0 && (
+        {shown.length === 0 && (
           <div class="card empty">
-            还没有任何集合。
-            {hasRole(c.var.user, 'editor') ? <a href="/new">创建第一个集合</a> : !c.var.user && <a href="/login">登录后开始创作</a>}
+            还没有任何文档。
+            {hasRole(c.var.user, 'contributor') ? <a href="/new">写第一篇文档</a> : !c.var.user && <a href="/login">登录后开始创作</a>}
           </div>
         )}
         <div class="grid">
-          {collections.map((col) => {
-            const top = readable.filter((d) => d.collection_id === col.id && !d.parent_id)
+          {shown.map((t) => {
+            const top = readable.filter((d) => d.collection_id === t.id && !d.parent_id)
             return (
               <section class="card">
-                <h2 style="margin:0 0 4px;font-size:18px">
-                  <a href={`/c/${col.id}`} style="color:inherit">
-                    {col.name}
+                <h2 style="margin:0 0 10px;font-size:18px">
+                  <a href={`/c/${t.id}`} style="color:inherit">
+                    {t.name}
                   </a>
                 </h2>
-                {col.description && (
-                  <p class="muted small" style="margin:0 0 10px">
-                    {col.description}
-                  </p>
-                )}
                 <ul class="list small">
                   {top.slice(0, 6).map((d) => (
                     <li style="padding:6px 0">
                       <a href={`/d/${d.id}`}>{d.title || '无标题'}</a>
                     </li>
                   ))}
-                  {top.length === 0 && <li class="muted">暂无文档</li>}
                 </ul>
                 {top.length > 6 && (
-                  <a class="small" href={`/c/${col.id}`}>
+                  <a class="small" href={`/c/${t.id}`}>
                     查看全部 {top.length} 篇 →
                   </a>
                 )}
@@ -146,7 +138,7 @@ async function renderIndex(c: Context<AppEnv>, title: string): Promise<Response>
         {recent.length > 0 && (
           <section style="margin-top:40px">
             <h2 style="font-size:18px">最近更新</h2>
-            <RecentList docs={recent} colName={colName} />
+            <RecentList docs={recent} topicName={topicName} />
           </section>
         )}
       </main>
@@ -154,39 +146,38 @@ async function renderIndex(c: Context<AppEnv>, title: string): Promise<Response>
   )
 }
 
-/* ---------------- 集合页 ---------------- */
+/* ---------------- 主题页 ---------------- */
 
 pages.get('/c/:id', rateLimit('read'), (c) =>
   cached(c, `/c/${c.req.param('id')}`, async () => {
     const db = c.var.p.db
-    const col = await db.get<{ id: string; name: string; description: string }>(
-      'SELECT id, name, description FROM collections WHERE id = ?',
-      c.req.param('id'),
-    )
-    if (!col) return { res: await notFound(c), cacheable: false }
+    const topic = await db.get<{ id: string; name: string }>('SELECT id, name FROM collections WHERE id = ?', c.req.param('id'))
+    if (!topic) return { res: await notFound(c), cacheable: false }
     const docs = filterReadable(
       c.var.user,
       await db.all<TreeRow>(
         'SELECT id, parent_id, title, visibility, author_id, collection_id, updated_at FROM docs WHERE collection_id = ? AND id != ? ORDER BY sort, created_at',
-        col.id,
+        topic.id,
         HOME_DOC_ID,
       ),
     )
     const res = await c.html(
-      <Layout {...(await layoutProps(c))} title={col.name} description={col.description || undefined}>
+      <Layout {...(await layoutProps(c))} title={topic.name}>
         <main class="container">
-          <h1 class="doc-title">{col.name}</h1>
+          <nav class="crumbs">
+            <a href="/c">全部文档</a>
+          </nav>
+          <h1 class="doc-title">{topic.name}</h1>
           <div class="doc-meta">
             <span>{docs.length} 篇文档</span>
             {hasRole(c.var.user, 'contributor') && (
               <span class="actions">
-                <a class="btn btn-primary btn-sm" href={`/new?collection=${col.id}`}>
-                  新建文档
+                <a class="btn btn-primary btn-sm" href={`/new?topic=${topic.id}`}>
+                  在此写文档
                 </a>
               </span>
             )}
           </div>
-          {col.description && <p class="muted">{col.description}</p>}
           {docs.length ? <Tree docs={docs} /> : <p class="empty">暂无文档</p>}
         </main>
       </Layout>,
@@ -204,7 +195,7 @@ pages.get('/d/:id', rateLimit('read'), async (c) => {
 })
 
 /**
- * 文档阅读页。home 为 true 时渲染首页文档：不显示面包屑；文档不存在或无权阅读时返回 null，由调用方显示集合列表。
+ * 文档阅读页。home 为 true 时渲染首页文档：不显示面包屑；文档不存在或无权阅读时返回 null，由调用方显示主题列表。
  */
 async function renderDoc(c: Context<AppEnv>, id: string, home: boolean): Promise<{ res: Response; cacheable: boolean } | null> {
   const p = c.var.p
@@ -230,13 +221,13 @@ async function renderDoc(c: Context<AppEnv>, id: string, home: boolean): Promise
   }
   const vis = effectiveVisibility(chain)
   const canEdit = canEditChain(user, chain)
-  const [col, tree, editor, comments] = await Promise.all([
+  const [topic, tree, editor, comments] = await Promise.all([
     p.db.get<{ id: string; name: string }>('SELECT id, name FROM collections WHERE id = ?', doc.collection_id),
     p.db.all<TreeRow>(
       'SELECT id, parent_id, title, visibility, author_id, collection_id, updated_at FROM docs WHERE collection_id = ? ORDER BY sort, created_at',
       doc.collection_id,
     ),
-    p.db.get<{ name: string }>('SELECT name FROM users WHERE id = ?', doc.updated_by ?? doc.author_id),
+    p.db.get<{ id: string; name: string; avatar: string | null }>('SELECT id, name, avatar FROM users WHERE id = ?', doc.updated_by ?? doc.author_id),
     // 评论只给登录用户看，匿名页面因此可以安全地进入缓存
     user ? listComments(p.db, doc.id) : [],
   ])
@@ -265,7 +256,7 @@ async function renderDoc(c: Context<AppEnv>, id: string, home: boolean): Promise
         <article class="article">
           {!home && (
             <nav class="crumbs">
-              <a href={`/c/${col?.id}`}>{col?.name}</a>
+              <a href={`/c/${topic?.id}`}>{topic?.name}</a>
               {crumbs.map((n) => (
                 <>
                   <span>/</span>
@@ -278,7 +269,8 @@ async function renderDoc(c: Context<AppEnv>, id: string, home: boolean): Promise
           <div class="doc-meta">
             <VisBadge v={vis} />
             {!!doc.locked && <span class="badge">已锁定</span>}
-            <span>
+            <span class="doc-editor">
+              {editor && <Avatar id={editor.id} name={editor.name} src={editor.avatar} size={20} />}
               {editor?.name ?? '未知'} 更新于 <Time ts={doc.updated_at} />
             </span>
             <span class="actions">
@@ -305,7 +297,7 @@ async function renderDoc(c: Context<AppEnv>, id: string, home: boolean): Promise
             </section>
           )}
           {pluginHtml && <div dangerouslySetInnerHTML={{ __html: pluginHtml }} />}
-          <nav class="doc-foot">{home ? <a href="/c">全部文档 →</a> : <a href={`/c/${col?.id}`}>← {col?.name} 的全部文档</a>}</nav>
+          <nav class="doc-foot">{home ? <a href="/c">全部文档 →</a> : <a href={`/c/${topic?.id}`}>← {topic?.name}</a>}</nav>
           {user && <Discussion docId={doc.id} comments={comments} names={names} userId={user.id} canModerate={hasRole(user, 'editor')} />}
         </article>
       </main>
@@ -338,7 +330,7 @@ pages.get('/search', rateLimit('read'), async (c) => {
                 {r.title || '无标题'}
               </a>
               <span class="muted small" style="margin-left:8px">
-                {r.collectionName}
+                {r.topicName}
               </span>
               <div class="muted small">{r.snippet}</div>
             </li>

@@ -70,6 +70,8 @@ export interface User {
   email: string
   name: string
   role: Role
+  /** 头像地址（/uploads/...）；没有时显示用户名首字 */
+  avatar?: string | null
 }
 
 export interface PMMark {

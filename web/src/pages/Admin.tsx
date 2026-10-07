@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ROLES, ROLE_LABEL, VIS_LABEL, api, formatTime, type Collection, type GeoScope, type Role, type Visibility } from '../api'
+import { ROLES, ROLE_LABEL, VIS_LABEL, api, formatTime, type Topic, type GeoScope, type Role, type Visibility } from '../api'
 import { Topbar } from '../components/Topbar'
 import { uploadPublicImage } from '../sdk'
 import { useSession } from '../session'
@@ -15,7 +15,7 @@ interface AdminUser {
 
 export function AdminPage() {
   const { user, loading } = useSession()
-  const [tab, setTab] = useState<'site' | 'rules' | 'geo' | 'users' | 'collections'>('site')
+  const [tab, setTab] = useState<'site' | 'rules' | 'geo' | 'users' | 'topics'>('site')
 
   if (loading) return <Topbar />
   if (!user || user.role !== 'admin') {
@@ -40,7 +40,7 @@ export function AdminPage() {
               ['rules', '注册白名单'],
               ['geo', '地域限制'],
               ['users', '用户'],
-              ['collections', '集合'],
+              ['topics', '主题'],
             ] as const
           ).map(([k, label]) => (
             <button key={k} className={`tab${tab === k ? ' on' : ''}`} onClick={() => setTab(k)}>
@@ -51,7 +51,7 @@ export function AdminPage() {
         {tab === 'site' && <Site />}
         {tab === 'rules' && <Rules />}
         {tab === 'users' && <Users selfId={user.id} />}
-        {tab === 'collections' && <Collections />}
+        {tab === 'topics' && <Topics />}
         {tab === 'geo' && <Geo />}
       </main>
     </>
@@ -78,7 +78,7 @@ function Site() {
       <SiteInfoEditor />
       <h3 style={{ fontSize: 16, marginTop: 32 }}>首页</h3>
       <p className="muted small">
-        首页文档是一篇固定的文档，显示在网站首页，适合放最常用的信息和链接。它不出现在集合的文档树中。没有首页文档、或访客无权阅读它时，首页显示集合列表；集合列表始终可以在
+        首页文档是一篇固定的文档，显示在网站首页，适合放最常用的信息和链接。它不出现在文档树中。可以在其中插入「引导卡片」，把访客引到常用的文档。没有首页文档、或访客无权阅读它时，首页显示主题列表；主题列表始终可以在
         <a href="/c">「全部文档」</a>中找到。
       </p>
       {info.home ? (
@@ -506,57 +506,77 @@ function Users({ selfId }: { selfId: string }) {
   )
 }
 
-function Collections() {
-  const [list, setList] = useState<Collection[] | null>(null)
-  const load = () => api<{ collections: Collection[] }>('/collections').then((r) => setList(r.collections))
+function Topics() {
+  const [list, setList] = useState<Topic[] | null>(null)
+  const [name, setName] = useState('')
+  const load = () => api<{ topics: Topic[] }>('/topics').then((r) => setList(r.topics))
   useEffect(() => void load(), [])
-  const patch = async (id: string, body: Record<string, unknown>) => {
-    await api(`/collections/${id}`, { method: 'PATCH', body })
+  const run = async (f: () => Promise<unknown>) => {
+    try {
+      await f()
+    } catch (e) {
+      alert((e as Error).message)
+    }
     void load()
   }
+  // 与相邻主题交换位置，再按新顺序重新编号
+  const swap = (i: number, j: number) =>
+    run(async () => {
+      const order = [...list!]
+      ;[order[i], order[j]] = [order[j], order[i]]
+      for (const [k, t] of order.entries()) if (t.sort !== k + 1) await api(`/topics/${t.id}`, { method: 'PATCH', body: { sort: k + 1 } })
+    })
   return (
-    <ul className="list">
-      {list?.map((c) => (
-        <li key={c.id} className="row-between">
-          <div style={{ flex: 1 }}>
-            <a href={`/c/${c.id}`}>
-              <strong>{c.name}</strong>
+    <section>
+      <p className="muted small">主题用来给文档分组，显示在「全部文档」页和编辑器侧栏。文档可以在编辑器侧栏里拖到其他主题，或在文档的「⋯」菜单里切换主题。</p>
+      <ul className="list">
+        {list?.map((t, i) => (
+          <li key={t.id} className="row-between">
+            <a href={`/c/${t.id}`} style={{ flex: 1 }}>
+              <strong>{t.name}</strong>
             </a>
-            <div className="muted small">{c.description || '无描述'}</div>
-          </div>
-          <label className="small muted">
-            新文档默认{' '}
-            <select className="input input-sm" value={c.defaultVisibility} onChange={(e) => patch(c.id, { defaultVisibility: e.target.value })}>
-              {(['public', 'protected'] as Visibility[]).map((v) => (
-                <option key={v} value={v}>
-                  {VIS_LABEL[v]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            className="btn btn-sm"
-            onClick={() => {
-              const name = prompt('集合名称', c.name)
-              if (name) void patch(c.id, { name })
-            }}
-          >
-            重命名
-          </button>
-          <button
-            className="btn btn-sm btn-danger"
-            onClick={async () => {
-              if (!confirm(`删除集合「${c.name}」及其中所有文档？此操作不可撤销。`)) return
-              await api(`/collections/${c.id}`, { method: 'DELETE' })
-              void load()
-            }}
-          >
-            删除
-          </button>
-        </li>
-      ))}
-      {list?.length === 0 && <li className="muted">暂无集合</li>}
-    </ul>
+            <button className="btn btn-sm" disabled={i === 0} title="上移" onClick={() => swap(i, i - 1)}>
+              ↑
+            </button>
+            <button className="btn btn-sm" disabled={i === list.length - 1} title="下移" onClick={() => swap(i, i + 1)}>
+              ↓
+            </button>
+            <button
+              className="btn btn-sm"
+              onClick={() => {
+                const name = prompt('主题名称', t.name)?.trim()
+                if (name) void run(() => api(`/topics/${t.id}`, { method: 'PATCH', body: { name } }))
+              }}
+            >
+              重命名
+            </button>
+            <button
+              className="btn btn-sm btn-danger"
+              onClick={() => {
+                if (confirm(`删除主题「${t.name}」？只能删除没有文档的主题。`)) void run(() => api(`/topics/${t.id}`, { method: 'DELETE' }))
+              }}
+            >
+              删除
+            </button>
+          </li>
+        ))}
+        {list?.length === 0 && <li className="muted">还没有主题。写第一篇文档时会自动创建「未分类」。</li>}
+      </ul>
+      <form
+        className="row-between"
+        style={{ marginTop: 12 }}
+        onSubmit={(e) => {
+          e.preventDefault()
+          void run(async () => {
+            await api('/topics', { body: { name } })
+            setName('')
+          })
+        }}
+      >
+        <input className="input" style={{ flex: 1 }} placeholder="新主题名称，如「新生入学」" required maxLength={60} value={name} onChange={(e) => setName(e.target.value)} />
+        <button className="btn btn-primary">添加主题</button>
+      </form>
+    </section>
   )
 }
 

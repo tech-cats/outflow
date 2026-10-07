@@ -1,7 +1,7 @@
 import type { CommentJson } from '../core/comments'
 import { MAX_COMMENT_LENGTH } from '../core/comments'
 import { tokenize } from '../lib/comment-text'
-import { Time } from './layout'
+import { Avatar, Time } from './layout'
 
 /** 阅读页底部的文末讨论（仅登录用户可见，不进入边缘缓存） */
 export function CommentText({ body, names }: { body: string; names: Record<string, string> }) {
@@ -35,6 +35,7 @@ export function Discussion(props: {
   const item = (c: CommentJson) => (
     <div class="comment" id={`c-${c.id}`}>
       <div class="comment-head">
+        <Avatar id={c.authorId} name={c.authorName} src={c.authorAvatar} size={22} />
         <strong>{c.authorName ?? '已注销用户'}</strong>
         <Time ts={c.createdAt} />
         {(c.authorId === props.userId || props.canModerate) && (

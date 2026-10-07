@@ -5,8 +5,8 @@ import type { DB, Role, User, Visibility } from '../types'
  * 角色（全局，逐级包含）：
  *  member      —— 阅读登录可见的文档、评论
  *  contributor —— 新建文档，编辑、发布、移动、删除自己的文档
- *  editor      —— 审稿：编辑、移动、删除他人的文档，新建集合
- *  admin       —— 锁定文档、管理集合与用户、站点设置；可看所有草稿
+ *  editor      —— 审稿：编辑、移动、删除他人的文档，新建和整理主题
+ *  admin       —— 锁定文档、删除主题、管理用户、站点设置；可看所有草稿
  */
 export const ROLES: Role[] = ['member', 'contributor', 'editor', 'admin']
 
@@ -87,7 +87,7 @@ export function canToggleDraft(user: User | null, doc: DocNode): boolean {
   return !!user && (user.role === 'admin' || user.id === doc.author_id)
 }
 
-/** 对一个集合内的扁平文档列表做可读性过滤（父不可读则子也不可读） */
+/** 对扁平文档列表做可读性过滤（父不可读则子也不可读） */
 export function filterReadable<T extends DocNode>(user: User | null, docs: T[]): T[] {
   const byId = new Map(docs.map((d) => [d.id, d]))
   const memo = new Map<string, boolean>()
