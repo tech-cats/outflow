@@ -308,6 +308,15 @@ check('更换头像后旧图片被删除', r.status === 200 && (await call(avata
 check('恢复默认头像', (await call('/api/me/avatar', { method: 'DELETE', cookie: carol.cookie })).status === 200 && (await call('/api/me', { cookie: carol.cookie })).json.user.avatar === null)
 check('非图片不能作为头像', (await call('/api/me/avatar', { method: 'PUT', cookie: carol.cookie, body: (() => { const f = new FormData(); f.append('file', new Blob(['x'], { type: 'text/plain' }), 'a.txt'); return f })() })).status === 400)
 
+// ---- 修改昵称 ----
+check('昵称不能为空', (await as(carol, '/api/me', { method: 'PATCH', body: { name: '  ' } })).status === 400)
+check('昵称不能超过 40 字', (await as(carol, '/api/me', { method: 'PATCH', body: { name: 'x'.repeat(41) } })).status === 400)
+r = await as(carol, '/api/me', { method: 'PATCH', body: { name: ' 卡罗尔 ' } })
+check('修改昵称', r.status === 200 && r.json.user.name === '卡罗尔' && (await as(carol, '/api/me')).json.user.name === '卡罗尔')
+check('评论显示新昵称', (await as(carol, `/api/docs/${pub}/comments`)).json?.comments?.some((x) => x.authorName === '卡罗尔'))
+check('未登录不能修改昵称', (await call('/api/me', { method: 'PATCH', body: { name: 'x' } })).status === 401)
+await as(carol, '/api/me', { method: 'PATCH', body: { name: 'carol' } })
+
 // ---- 首页文档 ----
 const isHome = (html) => html.includes('data-page="home"')
 check('没有首页文档时显示主题列表', !isHome((await call('/')).text) && (await call('/c')).text.includes('冒烟测试'))

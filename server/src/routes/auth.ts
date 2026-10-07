@@ -24,7 +24,9 @@ import { normalizeEmail } from '../lib/email-rules'
 import type { AppEnv } from '../types'
 import { blockedScopes } from '../core/geo'
 import { getRegisterTexts } from '../core/site'
-import { body, country, fail, geoBlock, ip, rateLimit, siteInfo, str } from './util'
+import { body, country, fail, geoBlock, ip, rateLimit, requireUser, siteInfo, str } from './util'
+
+const NAME_MAX = 40
 
 const auth = new Hono<AppEnv>()
 
@@ -108,9 +110,9 @@ auth.post('/auth/register', rateLimit('auth'), async (c) => {
   if (geo) return geo
   const b = await body(c)
   const email = normalizeEmail(b.email)
-  const name = str(b.name, 40)
+  const name = str(b.name, NAME_MAX)
   if (!email) return fail(c, 400, '邮箱格式不正确')
-  if (!name) return fail(c, 400, '请填写昵称（不超过 40 字）')
+  if (!name) return fail(c, 400, `请填写昵称（不超过 ${NAME_MAX} 字）`)
   const pwErr = passwordError(b.password)
   if (pwErr) return fail(c, 400, pwErr)
   if (!p.config.registrationEnabled) return fail(c, 403, '当前未开放注册')
@@ -156,8 +158,8 @@ auth.post('/auth/login', rateLimit('auth'), async (c) => {
     return fail(c, 400, '请完成人机验证', { captcha: true })
   }
 
-  const user = await p.db.get<{ id: string; name: string; role: string; password_hash: string; disabled: number }>(
-    'SELECT id, name, role, password_hash, disabled FROM users WHERE email = ?',
+  const user = await p.db.get<{ id: string; name: string; role: string; avatar: string | null; password_hash: string; disabled: number }>(
+    'SELECT id, name, role, avatar, password_hash, disabled FROM users WHERE email = ?',
     email,
   )
   // 用户不存在时也做一次哈希，避免通过响应时间探测邮箱是否注册
@@ -170,7 +172,7 @@ auth.post('/auth/login', rateLimit('auth'), async (c) => {
   if (user.disabled) return fail(c, 403, '账号已被停用')
   await clearFailures(p, keys[0])
   setSessionCookie(c, await createSession(p, user.id))
-  return c.json({ user: { id: user.id, email, name: user.name, role: user.role } })
+  return c.json({ user: { id: user.id, email, name: user.name, role: user.role, avatar: user.avatar } })
 })
 
 auth.post('/auth/reset', rateLimit('auth'), async (c) => {
@@ -202,6 +204,14 @@ auth.post('/auth/logout', async (c) => {
 })
 
 auth.get('/me', (c) => c.json({ user: c.var.user }))
+
+/** 修改昵称。@提及按用户 id 保存，改名后旧评论里的提及会显示新昵称 */
+auth.patch('/me', requireUser, rateLimit('write'), async (c) => {
+  const name = str((await body(c)).name, NAME_MAX)
+  if (!name) return fail(c, 400, `请填写昵称（不超过 ${NAME_MAX} 字）`)
+  await c.var.p.db.run('UPDATE users SET name = ? WHERE id = ?', name, c.var.user!.id)
+  return c.json({ user: { ...c.var.user!, name } })
+})
 
 /** 邮箱不在白名单内：返回后台配置的提示，notAllowed 让前端用醒目的样式展示 */
 async function emailDenied(c: Context<AppEnv>) {
