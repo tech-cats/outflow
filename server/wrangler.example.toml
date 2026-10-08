@@ -29,7 +29,8 @@ new_sqlite_classes = ["CollabRoom"]
 directory = "../web/dist"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
-run_worker_first = true
+# 除了带哈希的 /assets/，其余请求都先交给 Worker（动态路由、SPA 回退）；/assets/ 直接由静态资源返回，缓存头见 web/public/_headers
+run_worker_first = ["/*", "!/assets/*"]
 
 # 限流：period 只能是 10 或 60 秒；同一账号部署多个站点时 namespace_id 也要各不相同，否则会共用计数
 [[ratelimits]]
