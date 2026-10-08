@@ -27,6 +27,18 @@ import { getRegisterTexts } from '../core/site'
 import { body, country, fail, geoBlock, ip, rateLimit, requireUser, siteInfo, str } from './util'
 
 const NAME_MAX = 40
+const NAME_TAKEN = '这个昵称已经有人用了，换一个吧'
+
+/** 昵称：去掉首尾空白、合并连续空白；不合法时返回 null */
+const cleanName = (v: unknown) => str(typeof v === 'string' ? v.replace(/\s+/g, ' ') : v, NAME_MAX)
+
+/** 昵称是否已被其他用户使用（不区分英文大小写，与 users_name 唯一索引一致） */
+async function nameTaken(c: Context<AppEnv>, name: string, exceptId: string | null = null) {
+  return !!(await c.var.p.db.get('SELECT 1 AS x FROM users WHERE lower(name) = lower(?) AND id IS NOT ?', name, exceptId))
+}
+
+/** 并发时唯一索引兜底 */
+const isUniqueError = (e: unknown) => /UNIQUE constraint failed/i.test(String((e as Error)?.message ?? e))
 
 const auth = new Hono<AppEnv>()
 
@@ -110,13 +122,15 @@ auth.post('/auth/register', rateLimit('auth'), async (c) => {
   if (geo) return geo
   const b = await body(c)
   const email = normalizeEmail(b.email)
-  const name = str(b.name, NAME_MAX)
+  const name = cleanName(b.name)
   if (!email) return fail(c, 400, '邮箱格式不正确')
   if (!name) return fail(c, 400, `请填写昵称（不超过 ${NAME_MAX} 字）`)
   const pwErr = passwordError(b.password)
   if (pwErr) return fail(c, 400, pwErr)
   if (!p.config.registrationEnabled) return fail(c, 403, '当前未开放注册')
   if (!(await emailAllowed(p, email))) return emailDenied(c)
+  // 在消耗验证码之前检查，昵称冲突时验证码还能继续用
+  if (await nameTaken(c, name)) return fail(c, 409, NAME_TAKEN, { field: 'name' })
 
   const codeErr = await consumeEmailCode(p, email, 'register', String(b.code ?? ''))
   if (codeErr) return fail(c, 400, codeErr)
@@ -125,15 +139,20 @@ auth.post('/auth/register', rateLimit('auth'), async (c) => {
   const id = newId()
   // 第一个注册的用户自动成为管理员
   const first = !(await p.db.get('SELECT 1 AS x FROM users LIMIT 1'))
-  await p.db.run(
-    'INSERT INTO users (id, email, name, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-    id,
-    email,
-    name,
-    await hashPassword(b.password as string),
-    first ? 'admin' : 'member',
-    Date.now(),
-  )
+  try {
+    await p.db.run(
+      'INSERT INTO users (id, email, name, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      id,
+      email,
+      name,
+      await hashPassword(b.password as string),
+      first ? 'admin' : 'member',
+      Date.now(),
+    )
+  } catch (e) {
+    if (isUniqueError(e)) return fail(c, 409, NAME_TAKEN, { field: 'name' })
+    throw e
+  }
   setSessionCookie(c, await createSession(p, id))
   return c.json({ user: { id, email, name, role: first ? 'admin' : 'member', avatar: null } })
 })
@@ -205,11 +224,18 @@ auth.post('/auth/logout', async (c) => {
 
 auth.get('/me', (c) => c.json({ user: c.var.user }))
 
-/** 修改昵称。@提及按用户 id 保存，改名后旧评论里的提及会显示新昵称 */
+/** 修改昵称（全站唯一）。@提及按用户 id 保存，改名后旧评论里的提及会显示新昵称 */
 auth.patch('/me', requireUser, rateLimit('write'), async (c) => {
-  const name = str((await body(c)).name, NAME_MAX)
+  const name = cleanName((await body(c)).name)
   if (!name) return fail(c, 400, `请填写昵称（不超过 ${NAME_MAX} 字）`)
-  await c.var.p.db.run('UPDATE users SET name = ? WHERE id = ?', name, c.var.user!.id)
+  const me = c.var.user!.id
+  if (await nameTaken(c, name, me)) return fail(c, 409, NAME_TAKEN)
+  try {
+    await c.var.p.db.run('UPDATE users SET name = ? WHERE id = ?', name, me)
+  } catch (e) {
+    if (isUniqueError(e)) return fail(c, 409, NAME_TAKEN)
+    throw e
+  }
   return c.json({ user: { ...c.var.user!, name } })
 })
 

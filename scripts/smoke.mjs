@@ -316,6 +316,17 @@ check('修改昵称', r.status === 200 && r.json.user.name === '卡罗尔' && (a
 check('评论显示新昵称', (await as(carol, `/api/docs/${pub}/comments`)).json?.comments?.some((x) => x.authorName === '卡罗尔'))
 check('未登录不能修改昵称', (await call('/api/me', { method: 'PATCH', body: { name: 'x' } })).status === 401)
 await as(carol, '/api/me', { method: 'PATCH', body: { name: 'carol' } })
+check('昵称不能与他人重复（不区分大小写）', (await as(carol, '/api/me', { method: 'PATCH', body: { name: 'BOB' } })).status === 409)
+check('改自己昵称的大小写', (await as(carol, '/api/me', { method: 'PATCH', body: { name: 'Carol' } })).status === 200)
+check('昵称中的连续空白被合并', (await as(carol, '/api/me', { method: 'PATCH', body: { name: 'carol   x' } })).json?.user?.name === 'carol x')
+await as(carol, '/api/me', { method: 'PATCH', body: { name: 'carol' } })
+await call('/api/auth/send-code', { body: { email: 'nickdup@pku.edu.cn', purpose: 'register' } })
+await sleep(300)
+const nickdupCode = lastCode('nickdup@pku.edu.cn')
+r = await call('/api/auth/register', { body: { email: 'nickdup@pku.edu.cn', code: nickdupCode, name: 'dave', password: 'password123' } })
+check('注册时昵称不能与他人重复', r.status === 409 && r.json?.field === 'name', r.json?.error)
+r = await call('/api/auth/register', { body: { email: 'nickdup@pku.edu.cn', code: nickdupCode, name: 'nickdup', password: 'password123' } })
+check('昵称冲突不会消耗验证码', r.status === 200, r.json?.error)
 
 // ---- 首页文档 ----
 const isHome = (html) => html.includes('data-page="home"')
