@@ -4,6 +4,7 @@ import { hasRole } from '../core/access'
 import { avatarColor, avatarInitial, avatarSrc } from '../lib/avatar'
 import { pluginNav } from '../plugins/host'
 import type { User, Visibility } from '../types'
+import { PAGE_LOADER_JS } from './loader'
 import { POWERED_BY, THEME_INIT_JS, THEME_TOGGLE_JS, baseCss } from './styles'
 
 /** 用户头像：没有上传时显示用户名首字 */
@@ -106,6 +107,7 @@ export function Layout(props: LayoutProps) {
         {props.children}
         <footer class="site-footer" dangerouslySetInnerHTML={{ __html: POWERED_BY }} />
         <script dangerouslySetInnerHTML={{ __html: TIME_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: PAGE_LOADER_JS }} />
         <script dangerouslySetInnerHTML={{ __html: `document.getElementById('theme-toggle').onclick=${THEME_TOGGLE_JS}` }} />
         {props.user && (
           <script

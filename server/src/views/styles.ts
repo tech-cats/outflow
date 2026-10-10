@@ -1,3 +1,5 @@
+import { PAGE_LOADER_CSS } from './loader'
+
 /** 服务端阅读页与前端 SPA 共用的基础样式 */
 const DARK_VARS = `
     --bg: #17181a;
@@ -200,6 +202,7 @@ button.link { background: none; border: 0; padding: 0; cursor: pointer; color: v
   .topbar .search { max-width: none; }
   .doc-title { font-size: 26px; }
 }
+${PAGE_LOADER_CSS}
 `
 
 /** 站点名可自定义，页脚保留项目出处 */

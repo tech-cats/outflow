@@ -1,5 +1,7 @@
 import { RouterProvider, createRootRoute, createRoute, createRouter, lazyRouteComponent, Outlet, useRouterState } from '@tanstack/react-router'
+import { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import { CAT_SVG, PAGE_LOADER_DELAY, PAGE_LOADER_JS } from '../../server/src/views/loader'
 import { POWERED_BY, baseCss } from '../../server/src/views/styles'
 import './app.css'
 import { AccountPage } from './pages/Account'
@@ -14,6 +16,23 @@ const style = document.createElement('style')
 style.textContent = baseCss
 document.head.prepend(style)
 
+// 整页跳转（点普通链接、提交搜索）时的小猫，与服务端页面相同
+const loaderScript = document.createElement('script')
+loaderScript.textContent = PAGE_LOADER_JS
+document.head.append(loaderScript)
+
+/** 前端路由内部跳转（如首次进入编辑器、加载页面代码）时显示小猫 */
+function RouteLoader() {
+  const pending = useRouterState({ select: (s) => s.status === 'pending' })
+  const [show, setShow] = useState(false)
+  useEffect(() => {
+    if (!pending) return setShow(false)
+    const t = setTimeout(() => setShow(true), PAGE_LOADER_DELAY)
+    return () => clearTimeout(t)
+  }, [pending])
+  return show ? <div className="page-loader" role="status" aria-label="页面加载中" dangerouslySetInnerHTML={{ __html: CAT_SVG }} /> : null
+}
+
 const rootRoute = createRootRoute({
   component: () => {
     // 插件的全屏页面（如地图）占满视口，不显示页脚
@@ -21,6 +40,7 @@ const rootRoute = createRootRoute({
     return (
       <SessionProvider>
         <Outlet />
+        <RouteLoader />
         {!fullscreen && <footer className="site-footer" dangerouslySetInnerHTML={{ __html: POWERED_BY }} />}
       </SessionProvider>
     )
