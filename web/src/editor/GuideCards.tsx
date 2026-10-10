@@ -77,7 +77,20 @@ function CardView({ node, editor, getPos, updateAttributes, deleteNode }: ReactN
       {field('icon', '🧭', 4)}
       <span className="guide-body">
         {field('title', '标题', 40)}
-        {field('desc', '一句话说明（可选）', 80)}
+        <textarea
+          className="guide-input guide-input-desc"
+          rows={1}
+          value={a.desc}
+          placeholder="一句话说明（可选）"
+          maxLength={120}
+          // 随内容自动增高，和阅读页一样完整显示
+          ref={(el) => {
+            if (!el) return
+            el.style.height = 'auto'
+            el.style.height = el.scrollHeight + 'px'
+          }}
+          onChange={(e) => updateAttributes({ desc: e.target.value.replace(/\n/g, ' ') })}
+        />
         {field('href', '链接：/d/文档 ID 或 https://…', 300)}
       </span>
       <span className="guide-tools">

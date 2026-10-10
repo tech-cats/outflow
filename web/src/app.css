@@ -165,8 +165,8 @@ altcha-widget[display="invisible"] { position: absolute; width: 0; height: 0; ov
 .guide-input-icon::placeholder { opacity: .35; }
 .guide-input:hover, .guide-input:focus { border-bottom-color: var(--border); }
 .guide-input-icon { width: 34px; font-size: 22px; flex: none; text-align: center; }
-.guide-input-title { font-weight: 600; font-size: 15px; }
-.guide-input-desc { color: var(--fg-muted); font-size: 13px; }
+.guide-input-title { font-weight: 600; font-size: 17px; }
+.guide-input-desc { color: var(--fg-muted); font-size: 14px; line-height: 1.6; resize: none; overflow: hidden; display: block; }
 .guide-input-href { color: var(--accent); font-size: 12px; }
 .guide-tools { position: absolute; top: 4px; right: 6px; display: none; gap: 2px; }
 .guide-card.editing:hover .guide-tools, .guide-card.editing:focus-within .guide-tools { display: flex; }

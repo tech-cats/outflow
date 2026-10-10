@@ -140,13 +140,16 @@ button.link { background: none; border: 0; padding: 0; cursor: pointer; color: v
 .prose td > p:empty, .prose th > p:empty { min-height: 1.6em; }
 .prose .selectedCell { background: var(--accent-soft); }
 /* 引导卡片：阅读页与编辑器共用 */
-.guide-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin: 1.2em 0; }
-.prose a.guide-card, .guide-card { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); color: var(--fg); text-decoration: none; transition: border-color .15s, box-shadow .15s, transform .15s; }
+.guide-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin: 1.2em 0; }
+/* 2 张、4 张时排成两列，避免一行三列留下空位 */
+.guide-cards:has(> :nth-child(2):last-child), .guide-cards:has(> :nth-child(4):last-child) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 560px) { .guide-cards, .guide-cards:has(> :nth-child(2):last-child), .guide-cards:has(> :nth-child(4):last-child) { grid-template-columns: 1fr; } }
+.prose a.guide-card, .guide-card { display: flex; align-items: flex-start; gap: 14px; padding: 18px 20px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); color: var(--fg); text-decoration: none; transition: border-color .15s, box-shadow .15s, transform .15s; }
 .prose a.guide-card:hover { border-color: var(--accent); box-shadow: var(--shadow); transform: translateY(-1px); text-decoration: none; }
-.guide-icon { font-size: 24px; line-height: 1.2; flex: none; }
+.guide-icon { font-size: 28px; line-height: 1.2; flex: none; }
 .guide-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
-.guide-body strong { font-size: 15px; }
-.guide-body > span { color: var(--fg-muted); font-size: 13px; line-height: 1.5; }
+.guide-body strong { font-size: 17px; }
+.guide-body > span { color: var(--fg-muted); font-size: 14px; line-height: 1.6; }
 .prose ul.task-list, .prose ul[data-type="taskList"] { list-style: none; padding-left: .2em; }
 .prose li.task-item, .prose ul[data-type="taskList"] li { display: flex; gap: .5em; align-items: flex-start; }
 .prose li.task-item input, .prose ul[data-type="taskList"] li > label { margin-top: .45em; }
