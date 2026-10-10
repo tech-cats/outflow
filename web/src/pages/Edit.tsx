@@ -2,6 +2,7 @@ import Collaboration from '@tiptap/extension-collaboration'
 import CollaborationCaret from '@tiptap/extension-collaboration-caret'
 import Image from '@tiptap/extension-image'
 import { TaskItem, TaskList } from '@tiptap/extension-list'
+import { TableKit } from '@tiptap/extension-table'
 import Placeholder from '@tiptap/extension-placeholder'
 import { EditorContent, useEditor, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
@@ -26,6 +27,7 @@ import {
 import { Avatar } from '../components/Avatar'
 import { DocTree } from '../components/DocTree'
 import { GuideCard, GuideCards } from '../editor/GuideCards'
+import { markdownToPaste } from '../editor/markdownPaste'
 import { docPanels } from '../plugins'
 import { Toolbar } from '../components/Toolbar'
 import { Topbar } from '../components/Topbar'
@@ -498,6 +500,8 @@ function CollabEditor({
         Image,
         TaskList,
         TaskItem.configure({ nested: true }),
+        // 列宽拖动不开启：阅读页不保存列宽，两边显示保持一致
+        TableKit.configure({ table: { resizable: false } }),
         GuideCards,
         GuideCard,
         Placeholder.configure({ placeholder: '开始写作…（支持 Markdown 快捷输入，如 # 标题、- 列表、``` 代码块）' }),
@@ -507,7 +511,16 @@ function CollabEditor({
       ],
       editorProps: {
         attributes: { class: 'prose editor' },
-        handlePaste: (_view, event) => insertFiles([...(event.clipboardData?.files ?? [])]),
+        handlePaste: (view, event) => {
+          const data = event.clipboardData
+          if (insertFiles([...(data?.files ?? [])])) return true
+          // 代码块里保持原样粘贴
+          if (!data || view.state.selection.$from.parent.type.spec.code) return false
+          const html = markdownToPaste(data.getData('text/plain'), data.getData('text/html'))
+          if (!html || !editorRef.current) return false
+          editorRef.current.chain().focus().insertContent(html).run()
+          return true
+        },
         handleDrop: (view, event) => {
           const files = [...(event.dataTransfer?.files ?? [])]
           if (!files.length) return false

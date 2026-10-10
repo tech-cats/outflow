@@ -25,6 +25,7 @@ export function Toolbar({ editor, onUpload }: Props) {
       task: e.isActive('taskList'),
       quote: e.isActive('blockquote'),
       codeBlock: e.isActive('codeBlock'),
+      table: e.isActive('table'),
     }),
   })
 
@@ -70,6 +71,7 @@ export function Toolbar({ editor, onUpload }: Props) {
       <B on={s.quote} title="引用" onClick={() => chain().toggleBlockquote().run()}>❝</B>
       <B on={s.codeBlock} title="代码块" onClick={() => chain().toggleCodeBlock().run()}>{'{ }'}</B>
       <B title="分割线" onClick={() => chain().setHorizontalRule().run()}>―</B>
+      <B on={s.table} title="插入表格（3×3，第一行为表头）" onClick={() => chain().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>⊞</B>
       <B title="引导卡片：带图标、标题、说明和链接的卡片，适合放在首页" onClick={() => chain().insertContent(newGuideCards).run()}>▦</B>
       <B title="插入图片（也可直接粘贴/拖入）" onClick={() => fileRef.current?.click()}>🖼</B>
       <input
@@ -85,6 +87,17 @@ export function Toolbar({ editor, onUpload }: Props) {
           if (url) chain().setImage({ src: url, alt: f.name }).run()
         }}
       />
+      {s.table && (
+        <>
+          <span className="tb-sep" />
+          <B title="在下方插入行" onClick={() => chain().addRowAfter().run()}>+行</B>
+          <B title="在右侧插入列" onClick={() => chain().addColumnAfter().run()}>+列</B>
+          <B title="删除当前行" onClick={() => chain().deleteRow().run()}>−行</B>
+          <B title="删除当前列" onClick={() => chain().deleteColumn().run()}>−列</B>
+          <B title="第一行设为/取消表头" onClick={() => chain().toggleHeaderRow().run()}>表头</B>
+          <B title="删除表格" onClick={() => chain().deleteTable().run()}>删表</B>
+        </>
+      )}
     </div>
   )
 }

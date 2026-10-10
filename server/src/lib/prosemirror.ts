@@ -86,7 +86,7 @@ function jsonChildrenToY(nodes: PMNode[]): (Y.XmlElement | Y.XmlText)[] {
 /* ---------------- 纯文本（用于搜索、摘要） ---------------- */
 
 const BLOCKS = new Set([
-  'paragraph', 'heading', 'blockquote', 'codeBlock', 'listItem', 'taskItem', 'horizontalRule',
+  'paragraph', 'heading', 'blockquote', 'codeBlock', 'listItem', 'taskItem', 'horizontalRule', 'tableRow',
 ])
 
 export function jsonToText(node: PMNode): string {
@@ -183,6 +183,17 @@ export function jsonToHtml(node: PMNode): string {
       return `<pre><code${lang ? ` class="language-${lang}"` : ''}>${escapeHtml(code)}</code></pre>`
     }
     case 'horizontalRule': return '<hr>'
+    case 'table': return `<div class="table-wrap"><table><tbody>${inner()}</tbody></table></div>`
+    case 'tableRow': return `<tr>${inner()}</tr>`
+    case 'tableHeader':
+    case 'tableCell': {
+      const tag = node.type === 'tableHeader' ? 'th' : 'td'
+      const span = (k: string) => {
+        const n = Number(a[k])
+        return Number.isInteger(n) && n > 1 && n <= 100 ? ` ${k}="${n}"` : ''
+      }
+      return `<${tag}${span('colspan')}${span('rowspan')}>${inner()}</${tag}>`
+    }
     case 'guideCards': return `<div class="guide-cards">${inner()}</div>`
     case 'guideCard': return guideCardHtml(node)
     case 'hardBreak': return '<br>'
@@ -217,6 +228,23 @@ function mdInline(nodes: PMNode[] = []): string {
     .join('')
 }
 
+/** GFM 表格：单元格内的多段落合并为一行，合并单元格按普通单元格输出 */
+function mdTable(n: PMNode): string {
+  const rows = (n.content ?? []).map((row) =>
+    (row.content ?? []).map((cell) =>
+      (cell.content ?? [])
+        .map((b) => mdInline(b.content))
+        .join(' ')
+        .replace(/\|/g, '\\|')
+        .replace(/\n/g, ' '),
+    ),
+  )
+  if (!rows.length) return ''
+  const cols = Math.max(...rows.map((r) => r.length))
+  const line = (r: string[]) => `| ${Array.from({ length: cols }, (_, i) => r[i] ?? '').join(' | ')} |`
+  return [line(rows[0]), `|${' --- |'.repeat(cols)}`, ...rows.slice(1).map(line)].join('\n')
+}
+
 function mdBlocks(nodes: PMNode[] = [], indent = ''): string {
   return nodes.map((n) => mdBlock(n, indent)).join('\n\n')
 }
@@ -232,6 +260,7 @@ function mdBlock(n: PMNode, indent: string): string {
       return `${indent}\`\`\`${a.language ?? ''}\n${(n.content ?? []).map((c) => c.text).join('')}\n${indent}\`\`\``
     case 'horizontalRule': return indent + '---'
     case 'image': return indent + mdInline([n])
+    case 'table': return indent + mdTable(n).split('\n').join('\n' + indent)
     case 'guideCards':
       return (n.content ?? [])
         .map((c) => {

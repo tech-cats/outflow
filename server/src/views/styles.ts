@@ -131,6 +131,14 @@ button.link { background: none; border: 0; padding: 0; cursor: pointer; color: v
 .doc-editor { display: inline-flex; align-items: center; gap: 6px; }
 .comment-head .avatar { margin-right: 2px; }
 @media (max-width: 640px) { .me span { display: none; } .topbar .search { min-width: 72px; } }
+/* 表格：阅读页与编辑器共用 */
+.table-wrap, .prose .tableWrapper { overflow-x: auto; margin: 1.2em 0; }
+.prose table { border-collapse: collapse; width: 100%; font-size: 15px; table-layout: auto; }
+.prose th, .prose td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; vertical-align: top; min-width: 60px; }
+.prose th { background: var(--bg-soft); font-weight: 600; }
+.prose td > p, .prose th > p { margin: 0; }
+.prose td > p:empty, .prose th > p:empty { min-height: 1.6em; }
+.prose .selectedCell { background: var(--accent-soft); }
 /* 引导卡片：阅读页与编辑器共用 */
 .guide-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin: 1.2em 0; }
 .prose a.guide-card, .guide-card { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); color: var(--fg); text-decoration: none; transition: border-color .15s, box-shadow .15s, transform .15s; }
