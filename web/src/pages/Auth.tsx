@@ -156,7 +156,9 @@ function Stepper({ steps, current }: { steps: readonly string[]; current: number
  * 人机验证组件在整个流程中常驻，第 2 步的“重新发送”也能直接拿到 token。
  */
 function CodeFlow({ purpose }: { purpose: 'register' | 'reset' }) {
-  const { config } = useSession()
+  const { config, user } = useSession()
+  /** 已登录用户打开注册页：禁止再发送验证码 */
+  const loggedIn = purpose === 'register' && !!user
   const [step, setStep] = useState<1 | 2 | 3>(1)
   const [email, setEmail] = useState('')
   /** 验证码已发送到的邮箱；回到第 1 步时据此允许直接继续输入，不必等冷却 */
@@ -268,6 +270,7 @@ function CodeFlow({ purpose }: { purpose: 'register' | 'reset' }) {
           className="form"
           onSubmit={(e) => {
             e.preventDefault()
+            if (loggedIn) return
             if (alreadySent && cooldown > 0) go(2)
             else void sendCode()
           }}
@@ -295,14 +298,18 @@ function CodeFlow({ purpose }: { purpose: 'register' | 'reset' }) {
           ) : (
             error && <div className="form-error">{error}</div>
           )}
-          {alreadySent && cooldown > 0 ? (
+          {loggedIn ? (
+            <button className="btn btn-primary" disabled>
+              已登录
+            </button>
+          ) : alreadySent && cooldown > 0 ? (
             <button className="btn btn-primary">继续输入验证码</button>
           ) : (
             <button className="btn btn-primary" disabled={busy || cooldown > 0 || captchaPending}>
               {busy ? '发送中…' : cooldown > 0 ? `${cooldown} 秒后可发送` : captchaPending ? '安全验证中…' : '发送验证码'}
             </button>
           )}
-          {alreadySent && cooldown <= 0 && (
+          {!loggedIn && alreadySent && cooldown <= 0 && (
             <button type="button" className="link small" onClick={() => go(2)}>
               已收到验证码？继续输入 →
             </button>
