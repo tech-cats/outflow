@@ -1,13 +1,14 @@
 import { Hono } from 'hono'
 import type { Context } from 'hono'
-import { VISIBILITIES, canAddChild, canEditChain, canToggleDraft, chainReadable, effectiveVisibility, filterReadable, loadChain, type DocNode } from '../core/access'
+import { VISIBILITIES, canAddChild, canEditChain, canManageChain, canToggleDraft, chainReadable, effectiveVisibility, filterReadable, loadChain, type DocNode } from '../core/access'
 import { docCacheKeys } from '../core/docs'
 import { HOME_DOC_ID } from '../core/site'
 import { TOPIC_NAME_MAX, createTopic, defaultTopic, listTopics, moveSubtreeToTopic } from '../core/topics'
+import { notify } from '../core/notify'
 import { searchDocs } from '../core/search'
 import { newId } from '../lib/crypto'
 import { jsonToHtml, jsonToMarkdown } from '../lib/prosemirror'
-import type { AppEnv, PMNode, Visibility } from '../types'
+import type { AppEnv, PMNode, User, Visibility } from '../types'
 import { body, fail, rateLimit, requireAdmin, requireRole, requireUser, str } from './util'
 
 const docs = new Hono<AppEnv>()
@@ -40,19 +41,21 @@ function docJson(d: DocRow) {
 }
 
 /** 读取文档并做权限检查；失败时返回 Response */
-async function loadDoc(c: Context<AppEnv>, id: string, need: 'read' | 'edit') {
+async function loadDoc(c: Context<AppEnv>, id: string, need: 'read' | 'edit' | 'manage') {
   const p = c.var.p
   const doc = await p.db.get<DocRow>(`SELECT ${DOC_COLS} FROM docs WHERE id = ?`, id)
   if (!doc) return { res: fail(c, 404, '文档不存在') }
-  const chain = await loadChain(p.db, id)
+  const chain = await loadChain(p.db, id, c.var.user?.id)
   if (!chainReadable(c.var.user, chain)) {
     return { res: c.var.user ? fail(c, 404, '文档不存在') : fail(c, 401, '请先登录') }
   }
   const canEdit = canEditChain(c.var.user, chain)
-  if (need === 'edit' && !canEdit) {
-    return { res: fail(c, 403, doc.locked ? '文档已锁定，仅管理员可编辑' : '没有编辑权限') }
+  const canManage = canManageChain(c.var.user, chain)
+  if ((need === 'edit' && !canEdit) || (need === 'manage' && !canManage)) {
+    if (doc.locked) return { res: fail(c, 403, '文档已锁定，仅管理员可编辑') }
+    return { res: fail(c, 403, need === 'manage' && canEdit ? '协作者只能编辑内容和标题' : '没有编辑权限') }
   }
-  return { doc, chain, canEdit }
+  return { doc, chain, canEdit, canManage }
 }
 
 /* ---------------- 主题 ---------------- */
@@ -165,7 +168,8 @@ docs.get('/docs/:id', rateLimit('read'), async (c) => {
     topic: col,
     breadcrumbs: crumbs.filter(Boolean),
     canEdit: r.canEdit,
-    canDraft: r.canEdit && canToggleDraft(c.var.user, r.doc),
+    canManage: r.canManage,
+    canDraft: r.canManage && canToggleDraft(c.var.user, r.doc),
   })
 })
 
@@ -180,9 +184,11 @@ docs.get('/docs/:id/version', rateLimit('read'), async (c) => {
 docs.patch('/docs/:id', requireUser, rateLimit('write'), async (c) => {
   const p = c.var.p
   const user = c.var.user!
-  const r = await loadDoc(c, c.req.param('id'), 'edit')
-  if (r.res) return r.res
   const b = await body(c)
+  // 只改标题算编辑，其余（可见性、锁定、位置）都需要管理权限
+  const onlyTitle = Object.keys(b).every((k) => k === 'title')
+  const r = await loadDoc(c, c.req.param('id'), onlyTitle ? 'edit' : 'manage')
+  if (r.res) return r.res
   const doc = r.doc
   const canDraft = canToggleDraft(user, doc)
 
@@ -235,7 +241,7 @@ docs.patch('/docs/:id', requireUser, rateLimit('write'), async (c) => {
 })
 
 docs.delete('/docs/:id', requireUser, rateLimit('write'), async (c) => {
-  const r = await loadDoc(c, c.req.param('id'), 'edit')
+  const r = await loadDoc(c, c.req.param('id'), 'manage')
   if (r.res) return r.res
   const user = c.var.user!
   const childCount = await c.var.p.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM docs WHERE parent_id = ?', r.doc.id)
@@ -293,6 +299,61 @@ docs.post('/docs/:id/revisions/:rid/restore', requireUser, rateLimit('write'), a
   )
   if (!rev) return fail(c, 404, '版本不存在')
   await c.var.p.collab.replace(r.doc.id, JSON.parse(rev.content), c.var.user!.id)
+  return c.json({ ok: true })
+})
+
+/* ---------------- 协作者 ---------------- */
+
+/** 本文及祖先上的协作者；祖先上的授权会继承下来，只能在授权的那篇文档上移除 */
+docs.get('/docs/:id/editors', requireUser, async (c) => {
+  const r = await loadDoc(c, c.req.param('id'), 'read')
+  if (r.res) return r.res
+  const ids = r.chain.map((n) => n.id)
+  const rows = await c.var.p.db.all<{ doc_id: string; user_id: string; name: string; avatar: string | null; title: string; created_at: number }>(
+    `SELECT e.doc_id, e.user_id, u.name, u.avatar, d.title, e.created_at
+     FROM doc_editors e JOIN users u ON u.id = e.user_id JOIN docs d ON d.id = e.doc_id
+     WHERE e.doc_id IN (${ids.map(() => '?').join(',')}) AND u.disabled = 0
+     ORDER BY e.created_at`,
+    ...ids,
+  )
+  return c.json({
+    canManage: r.canManage,
+    editors: rows.map((e) => ({
+      userId: e.user_id,
+      name: e.name,
+      avatar: e.avatar,
+      // 继承自祖先时给出来源文档
+      from: e.doc_id === r.doc.id ? null : { id: e.doc_id, title: e.title },
+      createdAt: e.created_at,
+    })),
+  })
+})
+
+docs.post('/docs/:id/editors', requireUser, rateLimit('write'), async (c) => {
+  const r = await loadDoc(c, c.req.param('id'), 'manage')
+  if (r.res) return r.res
+  const p = c.var.p
+  const userId = str((await body(c)).userId, 64)
+  const target = userId ? await p.db.get<User & { disabled: number }>('SELECT id, email, name, role, disabled FROM users WHERE id = ?', userId) : null
+  if (!target || target.disabled) return fail(c, 400, '用户不存在')
+  if (target.id === r.doc.author_id) return fail(c, 400, '作者本来就可以编辑')
+  // 协作者必须能读到这篇文档，否则授权没有意义（草稿只有作者和管理员可读）
+  if (!chainReadable(target, r.chain)) return fail(c, 400, r.chain.some((n) => n.visibility === 'draft') ? '草稿只有作者可见，发布后才能添加协作者' : '该用户读不到这篇文档')
+  const res = await p.db.run(
+    'INSERT INTO doc_editors (doc_id, user_id, granted_by, created_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING',
+    r.doc.id,
+    target.id,
+    c.var.user!.id,
+    Date.now(),
+  )
+  if (res.changes) await notify(p, { type: 'doc.shared', actor: c.var.user!, docId: r.doc.id, userId: target.id })
+  return c.json({ ok: true })
+})
+
+docs.delete('/docs/:id/editors/:uid', requireUser, rateLimit('write'), async (c) => {
+  const r = await loadDoc(c, c.req.param('id'), 'manage')
+  if (r.res) return r.res
+  await c.var.p.db.run('DELETE FROM doc_editors WHERE doc_id = ? AND user_id = ?', r.doc.id, c.req.param('uid'))
   return c.json({ ok: true })
 })
 

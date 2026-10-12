@@ -46,10 +46,13 @@ interface DocDetail {
   topic: { id: string; name: string } | null
   breadcrumbs: { id: string; title: string }[]
   canEdit: boolean
+  canManage: boolean
   canDraft: boolean
 }
 
-/** 与服务端 canEditChain 对应（祖先可读性已由树接口保证） */
+type PanelName = 'none' | 'history' | 'settings' | 'editors'
+
+/** 与服务端 canManageChain 对应（祖先可读性已由树接口保证）；协作者授权不在树接口里，不能拖动 */
 function canEditDoc(user: User, d: DocMeta) {
   if (user.role === 'admin') return true
   if (d.locked) return false
@@ -68,7 +71,7 @@ export function EditPage({ id }: { id: string }) {
   const [detail, setDetail] = useState<DocDetail | null>(null)
   const [tree, setTree] = useState<{ topics: Topic[]; docs: DocMeta[] }>({ topics: [], docs: [] })
   const [error, setError] = useState('')
-  const [panel, setPanel] = useState<'none' | 'history' | 'settings'>('none')
+  const [panel, setPanel] = useState<PanelName>('none')
 
   const load = useCallback(async () => {
     try {
@@ -190,8 +193,8 @@ function DocEditor(props: {
   detail: DocDetail
   topics: Topic[]
   user: User
-  panel: 'none' | 'history' | 'settings'
-  setPanel(p: 'none' | 'history' | 'settings'): void
+  panel: PanelName
+  setPanel(p: PanelName): void
   onMetaChange(): void
   onTitleSaved(): void
 }) {
@@ -237,13 +240,14 @@ function DocBody(props: Parameters<typeof DocEditor>[0] & {
   const [notesOpen, setNotesOpen] = useState(() => new URLSearchParams(location.search).has('comments'))
   const openCount = comments.data?.comments.filter((c) => c.anchor && !c.parentId && !c.resolved).length ?? 0
 
-  // 批注面板与历史面板都在右侧，同时只显示一个
-  const setPanel = (p: 'none' | 'history' | 'settings') => {
-    if (p === 'history') setNotesOpen(false)
+  // 批注、历史、协作者面板都在右侧，同时只显示一个
+  const isDrawer = (p: PanelName) => p === 'history' || p === 'editors'
+  const setPanel = (p: PanelName) => {
+    if (isDrawer(p)) setNotesOpen(false)
     props.setPanel(p)
   }
   const openNotes = (open: boolean) => {
-    if (open && props.panel === 'history') props.setPanel('none')
+    if (open && isDrawer(props.panel)) props.setPanel('none')
     setNotesOpen(open)
   }
 
@@ -261,6 +265,7 @@ function DocBody(props: Parameters<typeof DocEditor>[0] & {
         setNotesOpen={openNotes}
       />
       {props.panel === 'history' && <HistoryPanel docId={doc.id} canEdit={detail.canEdit} onClose={() => props.setPanel('none')} />}
+      {props.panel === 'editors' && <EditorsPanel docId={doc.id} onClose={() => props.setPanel('none')} />}
       {docPanels.map(({ id, Panel }) => (
         <Panel key={id} docId={doc.id} canEdit={detail.canEdit} user={user} />
       ))}
@@ -273,8 +278,8 @@ function DocHeader(props: {
   detail: DocDetail
   topics: Topic[]
   user: User
-  panel: 'none' | 'history' | 'settings'
-  setPanel(p: 'none' | 'history' | 'settings'): void
+  panel: PanelName
+  setPanel(p: PanelName): void
   onMetaChange(): void
   onTitleSaved(): void
   status: string
@@ -385,14 +390,14 @@ function DocHeader(props: {
                   <button
                     key={v}
                     className={`menu-item${doc.visibility === v ? ' on' : ''}`}
-                    disabled={!detail.canEdit || ((v === 'draft' || doc.visibility === 'draft') && !detail.canDraft)}
+                    disabled={!detail.canManage || ((v === 'draft' || doc.visibility === 'draft') && !detail.canDraft)}
                     onClick={() => patch({ visibility: v })}
                   >
                     <span>{VIS_LABEL[v]}</span>
                     <small>{VIS_HINT[v]}</small>
                   </button>
                 ))}
-                {detail.canEdit && doc.id !== 'index' && props.topics.length > 1 && (
+                {detail.canManage && doc.id !== 'index' && props.topics.length > 1 && (
                   <>
                     <div className="menu-sep" />
                     <div className="menu-label">主题</div>
@@ -410,6 +415,11 @@ function DocHeader(props: {
                   </>
                 )}
                 <div className="menu-sep" />
+                {doc.id !== 'index' && (
+                  <button className="menu-item" onClick={() => props.setPanel('editors')}>
+                    协作者
+                  </button>
+                )}
                 {user.role === 'admin' && (
                   <button className="menu-item" onClick={() => patch({ locked: !doc.locked })}>
                     {doc.locked ? '解除锁定' : '锁定文档（仅管理员可编辑）'}
@@ -418,7 +428,7 @@ function DocHeader(props: {
                 <a className="menu-item" href={`/api/docs/${doc.id}/export.md`}>
                   导出 Markdown
                 </a>
-                {detail.canEdit && (
+                {detail.canManage && (
                   <button className="menu-item danger" onClick={remove}>
                     删除文档
                   </button>
@@ -590,6 +600,111 @@ function CollabEditor({
 }
 
 /* ---------------- 版本历史 ---------------- */
+
+interface DocEditor {
+  userId: string
+  name: string
+  avatar: string | null
+  from: { id: string; title: string } | null
+}
+
+function EditorsPanel({ docId, onClose }: { docId: string; onClose(): void }) {
+  const [data, setData] = useState<{ canManage: boolean; editors: DocEditor[] } | null>(null)
+  const [q, setQ] = useState('')
+  const [candidates, setCandidates] = useState<{ id: string; name: string }[]>([])
+  const [error, setError] = useState('')
+
+  const load = useCallback(() => api<{ canManage: boolean; editors: DocEditor[] }>(`/docs/${docId}/editors`).then(setData), [docId])
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  // 候选人复用 @ 提及接口：只列出能读到本文的用户
+  useEffect(() => {
+    const kw = q.trim()
+    if (!kw) return setCandidates([])
+    const t = setTimeout(() => {
+      api<{ users: { id: string; name: string }[] }>(`/docs/${docId}/mentionable?q=${encodeURIComponent(kw)}`)
+        .then((r) => setCandidates(r.users))
+        .catch(() => setCandidates([]))
+    }, 250)
+    return () => clearTimeout(t)
+  }, [docId, q])
+
+  const run = async (fn: () => Promise<unknown>) => {
+    setError('')
+    try {
+      await fn()
+      await load()
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+  const add = (userId: string) =>
+    run(async () => {
+      await api(`/docs/${docId}/editors`, { body: { userId } })
+      setQ('')
+    })
+  const remove = (userId: string) => run(() => api(`/docs/${docId}/editors/${userId}`, { method: 'DELETE' }))
+
+  const existing = new Set(data?.editors.map((e) => e.userId))
+  return (
+    <div className="drawer drawer-narrow">
+      <div className="drawer-head">
+        <strong>协作者</strong>
+        <button className="btn btn-sm" onClick={onClose}>
+          关闭
+        </button>
+      </div>
+      <p className="muted small">协作者可以编辑本文及其全部子文档的内容和标题，但不能删除、移动或修改可见性。</p>
+      {data?.canManage && (
+        <div className="editors-add">
+          <input className="input" placeholder="搜索昵称添加协作者" value={q} onChange={(e) => setQ(e.target.value)} />
+          {candidates.length > 0 && (
+            <ul className="list">
+              {candidates.map((u) => (
+                <li key={u.id} className="editor-row">
+                  <Avatar id={u.id} name={u.name} size={22} />
+                  <span>{u.name}</span>
+                  {existing.has(u.id) ? (
+                    <span className="muted small">已添加</span>
+                  ) : (
+                    <button className="btn btn-sm" onClick={() => add(u.id)}>
+                      添加
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+      {error && <div className="form-error">{error}</div>}
+      {!data && <p className="muted">加载中…</p>}
+      {data?.editors.length === 0 && <p className="muted">暂无协作者</p>}
+      <ul className="list">
+        {data?.editors.map((e) => (
+          <li key={`${e.userId}:${e.from?.id ?? ''}`} className="editor-row">
+            <Avatar id={e.userId} name={e.name} src={e.avatar} size={22} />
+            <span>
+              {e.name}
+              {e.from && (
+                <div className="muted small">
+                  继承自 <a href={`/edit/${e.from.id}`}>{e.from.title || '无标题'}</a>
+                </div>
+              )}
+            </span>
+            {data.canManage && !e.from && (
+              <button className="btn btn-sm" onClick={() => remove(e.userId)}>
+                移除
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
 
 interface Revision {
   id: string

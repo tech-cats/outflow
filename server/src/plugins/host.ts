@@ -67,7 +67,7 @@ function makeRequest(c: PluginContext, pluginId: string): PluginRequest {
       async access(docId) {
         const doc = await p.db.get<{ id: string; title: string }>('SELECT id, title FROM docs WHERE id = ?', docId)
         if (!doc) return null
-        const chain = await loadChain(p.db, docId)
+        const chain = await loadChain(p.db, docId, user?.id)
         const readable = chainReadable(user, chain)
         return { id: doc.id, title: readable ? doc.title : '', readable, editable: readable && canEditChain(user, chain) }
       },

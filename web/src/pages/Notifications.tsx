@@ -5,7 +5,7 @@ import { useSession } from '../session'
 
 interface Item {
   id: string
-  type: 'mention' | 'reply' | 'comment' | 'resolve'
+  type: 'mention' | 'reply' | 'comment' | 'resolve' | 'share'
   actorName: string | null
   docTitle: string | null
   excerpt: string
@@ -23,6 +23,7 @@ const TEXT: Record<Item['type'], string> = {
   reply: '回复了讨论',
   comment: '评论了你的文档',
   resolve: '解决了你的批注',
+  share: '邀请你协作编辑',
 }
 
 export function NotificationsPage() {

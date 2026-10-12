@@ -190,6 +190,33 @@ check('编辑可删除他人文档', (await as(dave, `/api/docs/${cdoc}`, { meth
 check('编辑可新建主题', (await as(dave, '/api/topics', { body: { name: '编辑主题' } })).status === 200)
 check('编辑不能锁定文档', (await as(dave, `/api/docs/${pub}`, { method: 'PATCH', body: { locked: true } })).status === 403)
 
+// ---- 协作者 ----
+const cparent = (await as(carol, '/api/docs', { body: { topicId: col, title: '协作父文档' } })).json.id
+const cchild = (await as(carol, '/api/docs', { body: { parentId: cparent, title: '协作子文档' } })).json.id
+const grant = (u, docId, userId) => as(u, `/api/docs/${docId}/editors`, { body: { userId } })
+check('贡献者不能给他人文档加协作者', (await grant(carol, pub, bob.id)).status === 403)
+check('作者可以添加协作者', (await grant(carol, cparent, bob.id)).status === 200)
+check('重复添加协作者不报错', (await grant(carol, cparent, bob.id)).status === 200)
+check('不能把作者加为协作者', (await grant(carol, cparent, carol.id)).status === 400)
+r = await as(bob, `/api/docs/${cchild}`)
+check('协作者授权继承到子文档', r.json?.canEdit === true && r.json?.canManage === false)
+check('协作者（成员）可以修改标题', (await as(bob, `/api/docs/${cchild}`, { method: 'PATCH', body: { title: '协作者改名' } })).status === 200)
+check('协作者不能修改可见性', (await as(bob, `/api/docs/${cchild}`, { method: 'PATCH', body: { visibility: 'protected' } })).status === 403)
+check('协作者不能删除文档', (await as(bob, `/api/docs/${cchild}`, { method: 'DELETE' })).status === 403)
+check('协作者不能再授权', (await grant(bob, cparent, dave.id)).status === 403)
+r = await as(carol, `/api/docs/${cchild}/editors`)
+check('子文档列出继承的协作者', r.json?.editors?.length === 1 && r.json.editors[0].from?.id === cparent)
+check('协作者收到通知', (await as(bob, '/api/notifications')).json.items.some((n) => n.type === 'share' && n.link === `/edit/${cparent}`))
+await as(bob, '/api/notifications/read', { body: {} })
+const cdraft = (await as(carol, '/api/docs', { body: { topicId: col, title: '协作草稿' } })).json.id
+await as(carol, `/api/docs/${cdraft}`, { method: 'PATCH', body: { visibility: 'draft' } })
+check('草稿不能添加协作者', (await grant(carol, cdraft, bob.id)).status === 400)
+await call(`/api/docs/${cchild}`, { method: 'PATCH', cookie: alice, body: { locked: true } })
+check('锁定后协作者不能修改', (await as(bob, `/api/docs/${cchild}`, { method: 'PATCH', body: { title: 'x' } })).status === 403)
+await call(`/api/docs/${cchild}`, { method: 'PATCH', cookie: alice, body: { locked: false } })
+check('只能在授权的文档上移除', (await as(carol, `/api/docs/${cparent}/editors/${bob.id}`, { method: 'DELETE' })).status === 200 &&
+  (await as(bob, `/api/docs/${cchild}`)).json?.canEdit === false)
+
 await call(`/api/docs/${pub}`, { method: 'PATCH', cookie: alice, body: { locked: true } })
 check('锁定后编辑不能修改', (await as(dave, `/api/docs/${pub}`, { method: 'PATCH', body: { title: 'x' } })).status === 403)
 check('锁定后不能新建子文档', (await as(dave, '/api/docs', { body: { parentId: pub } })).status === 403)

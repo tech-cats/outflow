@@ -212,7 +212,7 @@ async function renderDoc(c: Context<AppEnv>, id: string, home: boolean): Promise
     locked: number
   }>('SELECT id, collection_id, title, content, text, author_id, updated_at, updated_by, locked FROM docs WHERE id = ?', id)
   if (!doc) return home ? null : { res: await notFound(c), cacheable: false }
-  const chain = await loadChain(p.db, doc.id)
+  const chain = await loadChain(p.db, doc.id, user?.id)
   if (!chainReadable(user, chain)) {
     if (home) return null
     // 匿名访问受保护文档：提示登录；草稿等其他不可读情况一律 404，不暴露存在性

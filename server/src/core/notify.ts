@@ -11,14 +11,16 @@ import { chainReadable, loadChain } from './access'
  *  reply   —— 你发起或参与过的讨论有了新回复
  *  comment —— 你创建的文档有了新批注 / 讨论
  *  resolve —— 你发起的批注被别人解决
+ *  share   —— 你被添加为文档的协作者
  * 不通知操作者本人、已停用用户，以及（如今）读不到这篇文档的人。
  */
 
-export type NotifyType = 'mention' | 'reply' | 'comment' | 'resolve'
+export type NotifyType = 'mention' | 'reply' | 'comment' | 'resolve' | 'share'
 
 export type NotifyEvent =
   | { type: 'comment.created'; actor: User; docId: string; commentId: string }
   | { type: 'comment.resolved'; actor: User; docId: string; commentId: string }
+  | { type: 'doc.shared'; actor: User; docId: string; userId: string }
 
 const PRIORITY: NotifyType[] = ['mention', 'reply', 'comment', 'resolve']
 const MAX_MENTIONS = 20
@@ -38,6 +40,7 @@ export function commentLink(docId: string, root: { id: string; anchor: string | 
 }
 
 export async function notify(p: Platform, event: NotifyEvent): Promise<void> {
+  if (event.type === 'doc.shared') return notifyShared(p, event)
   const db = p.db
   const comment = await db.get<CommentRow>('SELECT id, doc_id, parent_id, author_id, body, anchor FROM comments WHERE id = ?', event.commentId)
   if (!comment) return
@@ -97,6 +100,20 @@ export async function notify(p: Platform, event: NotifyEvent): Promise<void> {
       now,
     )
   }
+}
+
+/** 被添加为协作者（调用方已确认对方能读到文档） */
+async function notifyShared(p: Platform, event: Extract<NotifyEvent, { type: 'doc.shared' }>): Promise<void> {
+  if (event.userId === event.actor.id) return
+  await p.db.run(
+    `INSERT INTO notifications (id, user_id, type, actor_id, doc_id, link, created_at) VALUES (?, ?, 'share', ?, ?, ?, ?)`,
+    newId(),
+    event.userId,
+    event.actor.id,
+    event.docId,
+    `/edit/${event.docId}`,
+    Date.now(),
+  )
 }
 
 /** 评论正文中被提及用户的名字 */

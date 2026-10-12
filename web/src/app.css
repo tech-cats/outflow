@@ -127,6 +127,9 @@ altcha-widget[display="invisible"] { position: absolute; width: 0; height: 0; ov
 .note-btn { position: fixed; z-index: 40; transform: translateX(-100%); padding: 4px 10px; font-size: 13px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg); color: var(--fg); box-shadow: var(--shadow); cursor: pointer; }
 .note-btn:hover { background: var(--bg-hover); }
 .drawer-narrow { width: min(380px, 100vw); }
+.editors-add { margin: 10px 0 14px; }
+.editor-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.editor-row > span:nth-child(2) { flex: 1; min-width: 0; }
 .drawer .thread { padding: 10px 12px; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 10px; cursor: default; }
 .drawer .thread.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
 .drawer .thread.resolved { opacity: .7; }

@@ -108,7 +108,7 @@ server.on('upgrade', async (req: IncomingMessage, socket: Duplex, head: Buffer) 
     const user = await getSessionUser(p, readCookie(req, SESSION_COOKIE))
     if (!user) return reject(socket, '401 Unauthorized')
     const docId = m[1]
-    const chain = await loadChain(p.db, docId)
+    const chain = await loadChain(p.db, docId, user.id)
     if (!chainReadable(user, chain)) return reject(socket, '404 Not Found')
     const readonly = !canEditChain(user, chain)
 
