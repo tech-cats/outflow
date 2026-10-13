@@ -65,6 +65,8 @@ export interface Topic {
 
 export interface DocMeta {
   id: string
+  /** 自定义链接 /d/<slug>，没有设置时为 null */
+  slug: string | null
   topicId: string
   parentId: string | null
   title: string

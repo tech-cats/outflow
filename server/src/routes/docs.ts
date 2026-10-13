@@ -3,6 +3,7 @@ import type { Context } from 'hono'
 import { VISIBILITIES, canAddChild, canEditChain, canManageChain, canToggleDraft, chainReadable, effectiveVisibility, filterReadable, loadChain, type DocNode } from '../core/access'
 import { docCacheKeys } from '../core/docs'
 import { HOME_DOC_ID } from '../core/site'
+import { parseSlug, setDocSlug } from '../core/slug'
 import { TOPIC_NAME_MAX, createTopic, defaultTopic, listTopics, moveSubtreeToTopic } from '../core/topics'
 import { notify } from '../core/notify'
 import { searchDocs } from '../core/search'
@@ -21,13 +22,15 @@ interface DocRow extends DocNode {
   created_at: number
   updated_at: number
   updated_by: string | null
+  slug: string | null
 }
 
-const DOC_COLS = 'id, collection_id, parent_id, title, visibility, locked, author_id, sort, created_at, updated_at, updated_by'
+const DOC_COLS = 'id, collection_id, parent_id, title, visibility, locked, author_id, sort, created_at, updated_at, updated_by, slug'
 
 function docJson(d: DocRow) {
   return {
     id: d.id,
+    slug: d.slug,
     topicId: d.collection_id,
     parentId: d.parent_id,
     title: d.title,
@@ -192,6 +195,15 @@ docs.patch('/docs/:id', requireUser, rateLimit('write'), async (c) => {
   const doc = r.doc
   const canDraft = canToggleDraft(user, doc)
 
+  const purge = docCacheKeys(doc.id, doc.slug)
+  if (b.slug !== undefined) {
+    if (doc.id === HOME_DOC_ID) return fail(c, 400, '首页文档不需要设置链接')
+    const parsed = parseSlug(typeof b.slug === 'string' ? b.slug : '')
+    if ('error' in parsed) return fail(c, 400, parsed.error)
+    const keys = await setDocSlug(p, doc, parsed.slug)
+    if (keys === 'taken') return fail(c, 409, '这个链接已经被其他文档使用了')
+    purge.push(...keys)
+  }
   if (typeof b.title === 'string') {
     await p.db.run('UPDATE docs SET title = ?, updated_at = ?, updated_by = ? WHERE id = ?', b.title.trim().slice(0, 200), Date.now(), user.id, doc.id)
   }
@@ -236,7 +248,7 @@ docs.patch('/docs/:id', requireUser, rateLimit('write'), async (c) => {
       await p.cache.purge([`/c/${doc.collection_id}`, `/c/${topicId}`])
     }
   }
-  await p.cache.purge(docCacheKeys(doc.id))
+  await p.cache.purge(purge)
   return c.json({ ok: true })
 })
 
@@ -247,7 +259,7 @@ docs.delete('/docs/:id', requireUser, rateLimit('write'), async (c) => {
   const childCount = await c.var.p.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM docs WHERE parent_id = ?', r.doc.id)
   if (childCount?.n && user.role !== 'admin') return fail(c, 400, '请先删除或移走子文档（只有管理员可以连同子文档一起删除）')
   await c.var.p.db.run('DELETE FROM docs WHERE id = ?', r.doc.id)
-  await c.var.p.cache.purge(docCacheKeys(r.doc.id))
+  await c.var.p.cache.purge(docCacheKeys(r.doc.id, r.doc.slug))
   return c.json({ ok: true })
 })
 

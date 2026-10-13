@@ -3,6 +3,7 @@ import { chainReadable, loadChain } from './access'
 
 export interface SearchResult {
   id: string
+  slug: string | null
   title: string
   topicName: string
   snippet: string
@@ -14,8 +15,8 @@ export async function searchDocs(p: Platform, user: User | null, query: string):
   const q = query.trim().slice(0, 100)
   if (!q) return []
   const like = `%${q.replace(/[\\%_]/g, (m) => '\\' + m)}%`
-  const rows = await p.db.all<{ id: string; title: string; text: string; updated_at: number; topic_name: string }>(
-    `SELECT d.id, d.title, d.text, d.updated_at, c.name AS topic_name
+  const rows = await p.db.all<{ id: string; slug: string | null; title: string; text: string; updated_at: number; topic_name: string }>(
+    `SELECT d.id, d.slug, d.title, d.text, d.updated_at, c.name AS topic_name
      FROM docs d JOIN collections c ON c.id = d.collection_id
      WHERE d.title LIKE ? ESCAPE '\\' OR d.text LIKE ? ESCAPE '\\'
      ORDER BY (d.title LIKE ? ESCAPE '\\') DESC, d.updated_at DESC LIMIT 200`,
@@ -32,6 +33,7 @@ export async function searchDocs(p: Platform, user: User | null, query: string):
     const start = Math.max(0, idx - 40)
     results.push({
       id: d.id,
+      slug: d.slug,
       title: d.title,
       topicName: d.topic_name,
       snippet: idx >= 0 ? (start > 0 ? '…' : '') + d.text.slice(start, idx + q.length + 80) : d.text.slice(0, 120),

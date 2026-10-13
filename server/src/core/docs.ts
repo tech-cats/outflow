@@ -5,9 +5,15 @@ import type { Platform } from '../types'
 
 const REVISION_INTERVAL_MS = 10 * 60 * 1000
 
-/** 文档变化时需要清除的缓存页面；首页可能展示这篇文档（首页文档、最近更新） */
-export function docCacheKeys(docId: string): string[] {
-  return [`/d/${docId}`, '/', '/c']
+/** 文档变化时需要清除的缓存页面：ID 和 slug 两个地址；首页可能展示这篇文档（首页文档、最近更新） */
+export function docCacheKeys(docId: string, slug?: string | null): string[] {
+  return [`/d/${docId}`, ...(slug ? [`/d/${slug}`] : []), '/', '/c']
+}
+
+/** 清除文档相关的缓存页面 */
+export async function purgeDocPages(p: Platform, docId: string) {
+  const row = await p.db.get<{ slug: string | null }>('SELECT slug FROM docs WHERE id = ?', docId)
+  await p.cache.purge(docCacheKeys(docId, row?.slug))
 }
 
 export async function loadDocState(p: Platform, docId: string): Promise<Uint8Array | null> {
@@ -49,5 +55,5 @@ export async function saveDocState(p: Platform, docId: string, doc: Y.Doc, edito
       editorId,
     )
   }
-  await p.cache.purge(docCacheKeys(docId))
+  await purgeDocPages(p, docId)
 }

@@ -315,6 +315,11 @@ function DocHeader(props: {
     }
   }
 
+  const editSlug = () => {
+    const input = prompt('自定义链接：只能用小写字母、数字和连字符，例如 freshman-guide。留空则恢复用文档 ID。\n改了之后，旧链接仍会跳转到这里。', doc.slug ?? '')
+    if (input !== null && input.trim() !== (doc.slug ?? '')) void patch({ slug: input })
+  }
+
   const remove = async () => {
     if (!confirm(`确定删除「${doc.title || '无标题'}」？${user.role === 'admin' ? '子文档也会一并删除。' : ''}此操作不可撤销。`)) return
     try {
@@ -370,7 +375,7 @@ function DocHeader(props: {
           ))}
         </span>
         <span className="actions">
-          <a className="btn btn-sm" href={`/d/${doc.id}`}>
+          <a className="btn btn-sm" href={`/d/${doc.slug || doc.id}`}>
             查看页面
           </a>
           <button className={`btn btn-sm${props.notes.open ? ' on' : ''}`} onClick={props.notes.toggle} title="选中正文文字即可添加批注">
@@ -415,6 +420,12 @@ function DocHeader(props: {
                   </>
                 )}
                 <div className="menu-sep" />
+                {detail.canManage && doc.id !== 'index' && (
+                  <button className="menu-item" onClick={editSlug}>
+                    <span>自定义链接</span>
+                    <small>/d/{doc.slug || doc.id}</small>
+                  </button>
+                )}
                 {doc.id !== 'index' && (
                   <button className="menu-item" onClick={() => props.setPanel('editors')}>
                     协作者

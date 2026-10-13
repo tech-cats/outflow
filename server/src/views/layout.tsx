@@ -1,6 +1,7 @@
 import { raw } from 'hono/html'
 import type { Child } from 'hono/jsx'
 import { hasRole } from '../core/access'
+import { docPath } from '../core/slug'
 import { avatarColor, avatarInitial, avatarSrc } from '../lib/avatar'
 import { pluginNav } from '../plugins/host'
 import type { User, Visibility } from '../types'
@@ -133,6 +134,7 @@ export function VisBadge({ v }: { v: Visibility }) {
 
 export interface TreeDoc {
   id: string
+  slug?: string | null
   parent_id: string | null
   title: string
 }
@@ -151,7 +153,7 @@ export function Tree({ docs, activeId, rootId }: { docs: TreeDoc[]; activeId?: s
       <ul>
         {list.map((d) => (
           <li>
-            <a href={`/d/${d.id}`} class={d.id === activeId ? 'active' : ''} title={d.title || '无标题'}>
+            <a href={docPath(d)} class={d.id === activeId ? 'active' : ''} title={d.title || '无标题'}>
               {d.title || '无标题'}
             </a>
             {render(d.id, depth + 1)}

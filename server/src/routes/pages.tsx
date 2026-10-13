@@ -7,6 +7,7 @@ import { listComments } from '../core/comments'
 import { mentionNames } from '../core/notify'
 import { searchDocs } from '../core/search'
 import { HOME_DOC_ID } from '../core/site'
+import { docPath, resolveDocKey } from '../core/slug'
 import { listTopics } from '../core/topics'
 import { escapeHtml, jsonToHtml } from '../lib/prosemirror'
 import type { AppEnv, PMNode } from '../types'
@@ -20,6 +21,7 @@ const PAGE_TTL = 60
 
 interface TreeRow extends DocNode {
   title: string
+  slug: string | null
   collection_id: string
   updated_at: number
 }
@@ -65,7 +67,7 @@ async function readableDocs(c: Context<AppEnv>) {
   return filterReadable(
     c.var.user,
     await c.var.p.db.all<TreeRow>(
-      'SELECT id, parent_id, title, visibility, author_id, collection_id, updated_at FROM docs WHERE id != ? ORDER BY sort, created_at',
+      'SELECT id, slug, parent_id, title, visibility, author_id, collection_id, updated_at FROM docs WHERE id != ? ORDER BY sort, created_at',
       HOME_DOC_ID,
     ),
   )
@@ -76,7 +78,7 @@ function RecentList({ docs, topicName }: { docs: TreeRow[]; topicName: Map<strin
     <ul class="list">
       {docs.map((d) => (
         <li style="display:flex;gap:12px;align-items:baseline">
-          <a href={`/d/${d.id}`} style="flex:1">
+          <a href={docPath(d)} style="flex:1">
             {d.title || '无标题'}
           </a>
           <span class="muted small">{topicName.get(d.collection_id)}</span>
@@ -122,7 +124,7 @@ async function renderIndex(c: Context<AppEnv>, title: string): Promise<Response>
                 <ul class="list small">
                   {top.slice(0, 6).map((d) => (
                     <li style="padding:6px 0">
-                      <a href={`/d/${d.id}`}>{d.title || '无标题'}</a>
+                      <a href={docPath(d)}>{d.title || '无标题'}</a>
                     </li>
                   ))}
                 </ul>
@@ -156,7 +158,7 @@ pages.get('/c/:id', rateLimit('read'), (c) =>
     const docs = filterReadable(
       c.var.user,
       await db.all<TreeRow>(
-        'SELECT id, parent_id, title, visibility, author_id, collection_id, updated_at FROM docs WHERE collection_id = ? AND id != ? ORDER BY sort, created_at',
+        'SELECT id, slug, parent_id, title, visibility, author_id, collection_id, updated_at FROM docs WHERE collection_id = ? AND id != ? ORDER BY sort, created_at',
         topic.id,
         HOME_DOC_ID,
       ),
@@ -188,18 +190,23 @@ pages.get('/c/:id', rateLimit('read'), (c) =>
 
 /* ---------------- 文档阅读页 ---------------- */
 
-pages.get('/d/:id', rateLimit('read'), async (c) => {
+pages.get('/d/:key', rateLimit('read'), async (c) => {
+  const key = c.req.param('key')
   // 首页文档只在 / 展示，避免同一内容有两个地址
-  if (c.req.param('id') === HOME_DOC_ID) return c.redirect('/', 302)
-  return cached(c, `/d/${c.req.param('id')}`, async () => (await renderDoc(c, c.req.param('id'), false))!)
+  if (key === HOME_DOC_ID) return c.redirect('/', 302)
+  // 地址可以是文档 ID 或 slug，按请求的地址缓存；跳转不进缓存
+  return cached(c, `/d/${key}`, async () => (await renderDoc(c, key, false))!)
 })
 
 /**
- * 文档阅读页。home 为 true 时渲染首页文档：不显示面包屑；文档不存在或无权阅读时返回 null，由调用方显示主题列表。
+ * 文档阅读页。key 是文档 ID 或 slug；home 为 true 时渲染首页文档：不显示面包屑；文档不存在或无权阅读时返回 null，由调用方显示主题列表。
  */
-async function renderDoc(c: Context<AppEnv>, id: string, home: boolean): Promise<{ res: Response; cacheable: boolean } | null> {
+async function renderDoc(c: Context<AppEnv>, key: string, home: boolean): Promise<{ res: Response; cacheable: boolean } | null> {
   const p = c.var.p
   const user = c.var.user
+  const found = home ? { id: key } : await resolveDocKey(p, key)
+  if (!found) return { res: await notFound(c), cacheable: false }
+  const id = found.id
   const doc = await p.db.get<{
     id: string
     collection_id: string
@@ -210,7 +217,8 @@ async function renderDoc(c: Context<AppEnv>, id: string, home: boolean): Promise
     updated_at: number
     updated_by: string | null
     locked: number
-  }>('SELECT id, collection_id, title, content, text, author_id, updated_at, updated_by, locked FROM docs WHERE id = ?', id)
+    slug: string | null
+  }>('SELECT id, collection_id, title, content, text, author_id, updated_at, updated_by, locked, slug FROM docs WHERE id = ?', id)
   if (!doc) return home ? null : { res: await notFound(c), cacheable: false }
   const chain = await loadChain(p.db, doc.id, user?.id)
   if (!chainReadable(user, chain)) {
@@ -219,12 +227,15 @@ async function renderDoc(c: Context<AppEnv>, id: string, home: boolean): Promise
     const needLogin = !user && chain.every((n) => n.visibility !== 'draft')
     return { res: needLogin ? await loginRequired(c) : await notFound(c), cacheable: false }
   }
+  // 用 ID 或旧 slug 访问时跳到当前地址；放在权限检查之后，读不到的文档不会暴露 slug
+  if (!home && doc.id === HOME_DOC_ID) return { res: c.redirect('/', 302), cacheable: false }
+  if (!home && key !== (doc.slug || doc.id)) return { res: c.redirect(docPath(doc), 301), cacheable: false }
   const vis = effectiveVisibility(chain)
   const canEdit = canEditChain(user, chain)
   const [topic, tree, editor, comments] = await Promise.all([
     p.db.get<{ id: string; name: string }>('SELECT id, name FROM collections WHERE id = ?', doc.collection_id),
     p.db.all<TreeRow>(
-      'SELECT id, parent_id, title, visibility, author_id, collection_id, updated_at FROM docs WHERE collection_id = ? ORDER BY sort, created_at',
+      'SELECT id, slug, parent_id, title, visibility, author_id, collection_id, updated_at FROM docs WHERE collection_id = ? ORDER BY sort, created_at',
       doc.collection_id,
     ),
     p.db.get<{ id: string; name: string; avatar: string | null }>('SELECT id, name, avatar FROM users WHERE id = ?', doc.updated_by ?? doc.author_id),
@@ -240,6 +251,7 @@ async function renderDoc(c: Context<AppEnv>, id: string, home: boolean): Promise
   const readableTree = filterReadable(user, tree)
   const children = readableTree.filter((d) => d.parent_id === doc.id)
   const titles = new Map(tree.map((d) => [d.id, d.title]))
+  const paths = new Map(tree.map((d) => [d.id, docPath(d)]))
   const crumbs = chain.slice(1).reverse()
   const html = doc.content ? jsonToHtml(JSON.parse(doc.content) as PMNode) : ''
   const description = doc.text.slice(0, 160).replace(/\s+/g, ' ')
@@ -250,7 +262,7 @@ async function renderDoc(c: Context<AppEnv>, id: string, home: boolean): Promise
       title={home ? '' : doc.title || '无标题'}
       description={description}
       noindex={vis !== 'public'}
-      canonical={vis === 'public' ? (home ? `${baseUrl(c)}/` : `${baseUrl(c)}/d/${doc.id}`) : undefined}
+      canonical={vis === 'public' ? (home ? `${baseUrl(c)}/` : `${baseUrl(c)}${docPath(doc)}`) : undefined}
     >
       <main class="container" data-page={home ? 'home' : 'doc'}>
         <article class="article">
@@ -260,7 +272,7 @@ async function renderDoc(c: Context<AppEnv>, id: string, home: boolean): Promise
               {crumbs.map((n) => (
                 <>
                   <span>/</span>
-                  <a href={`/d/${n.id}`}>{titles.get(n.id) || '无标题'}</a>
+                  <a href={paths.get(n.id) ?? `/d/${n.id}`}>{titles.get(n.id) || '无标题'}</a>
                 </>
               ))}
             </nav>
@@ -326,7 +338,7 @@ pages.get('/search', rateLimit('read'), async (c) => {
         <ul class="list">
           {results.map((r) => (
             <li>
-              <a href={`/d/${r.id}`} style="font-weight:600">
+              <a href={docPath(r)} style="font-weight:600">
                 {r.title || '无标题'}
               </a>
               <span class="muted small" style="margin-left:8px">
@@ -350,11 +362,11 @@ pages.get('/robots.txt', (c) =>
 )
 
 pages.get('/sitemap.xml', rateLimit('read'), async (c) => {
-  const all = await c.var.p.db.all<TreeRow>('SELECT id, parent_id, title, visibility, author_id, collection_id, updated_at FROM docs')
+  const all = await c.var.p.db.all<TreeRow>('SELECT id, slug, parent_id, title, visibility, author_id, collection_id, updated_at FROM docs')
   const base = baseUrl(c)
   // 以匿名身份过滤：只有有效可见性为 public 的文档才进入 sitemap
   const urls = filterReadable(null, all)
-    .map((d) => `<url><loc>${escapeHtml(d.id === HOME_DOC_ID ? `${base}/` : `${base}/d/${d.id}`)}</loc><lastmod>${new Date(d.updated_at).toISOString()}</lastmod></url>`)
+    .map((d) => `<url><loc>${escapeHtml(d.id === HOME_DOC_ID ? `${base}/` : `${base}${docPath(d)}`)}</loc><lastmod>${new Date(d.updated_at).toISOString()}</lastmod></url>`)
     .join('')
   return c.body(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls}</urlset>`, 200, {
     'Content-Type': 'application/xml; charset=utf-8',

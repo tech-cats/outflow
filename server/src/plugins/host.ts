@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { canEditChain, chainReadable, hasRole, loadChain } from '../core/access'
-import { docCacheKeys } from '../core/docs'
+import { purgeDocPages } from '../core/docs'
 import { escapeHtml } from '../lib/prosemirror'
 import { plugins } from '../plugins.gen'
 import { fail, requireRole, requireUser } from '../routes/util'
@@ -80,7 +80,7 @@ function makeRequest(c: PluginContext, pluginId: string): PluginRequest {
         return out
       },
     },
-    purgeDocPage: (docId) => p.cache.purge(docCacheKeys(docId)),
+    purgeDocPage: (docId) => purgeDocPages(p, docId),
     escape: escapeHtml,
   }
 }
