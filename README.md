@@ -88,7 +88,7 @@ docker compose up -d --build
 
 国内网络可以加 `--build-arg NPM_REGISTRY=https://registry.npmmirror.com`，或在 compose 的 `build.args` 中设置。
 
-数据保存在 `./data` 目录（SQLite 和上传的图片），备份时复制这个目录即可。如果部署在 Nginx、Caddy 等反向代理之后，需要设置 `TRUST_PROXY=true`，并让代理转发 WebSocket（路径为 `/api/collab/*`）。
+数据保存在 `./data` 目录（SQLite 和上传的图片），备份时复制这个目录即可。如果部署在 Nginx、Caddy 等反向代理之后，需要设置 `TRUST_PROXY=true`（取 `X-Forwarded-For` 的最后一项），并让代理转发 WebSocket（路径为 `/api/collab/*`）。前面套了 Cloudflare 时改用 `CLIENT_IP_HEADER=CF-Connecting-IP`，并确保源站只能经 Cloudflare 访问（例如 Cloudflare Tunnel）。
 
 使用地域白名单时，先在宿主机执行 `node scripts/geoip-download.mjs` 下载 IP 库（会保存到 `./data/geoip/`），再在 `.env` 中设置 `GEO_MMDB_PATH=/data/geoip/dbip-country-lite.mmdb`；如果前面套了 Cloudflare 代理，也可以改用 `GEO_COUNTRY_HEADER=CF-IPCountry`。
 
@@ -108,6 +108,7 @@ docker compose up -d --build
 | `GEO_REGISTER_COUNTRIES` / `GEO_LOGIN_COUNTRIES` | 各范围允许的国家/地区代码，如 `CN,HK`；留空表示不限制 |
 | `GEO_UNKNOWN` | 无法识别地区时 `deny`（默认）或 `allow` |
 | `GEO_COUNTRY_HEADER` / `GEO_MMDB_PATH` | 仅自托管：地区来源，二选一。IP 库用 `node scripts/geoip-download.mjs` 下载 |
+| `TRUST_PROXY` / `CLIENT_IP_HEADER` | 仅自托管：客户端 IP 来源。前者信任 `X-Forwarded-For`，后者直接读取上游代理提供的真实 IP 头（如 `CF-Connecting-IP`），两者都只能在源站无法绕过代理时使用 |
 | `MAIL_DRIVER` | 留空自动选择（有 `SMTP_HOST` 用 smtp，有 `RESEND_API_KEY` 用 resend，都没有则无法发验证码）；`cloudflare` 使用 Cloudflare Email Service（仅 Workers，需 `[[send_email]]` 绑定和已验证的发件域名，不需要密码）；`console` 只打印到日志，仅限开发 |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS` | SMTP 配置。在 Workers 上必须用 465 或 587 端口 |
 | `RATE_LIMIT_AUTH` / `RATE_LIMIT_WRITE` / `RATE_LIMIT_READ` | 自托管时的限流额度（每分钟次数，默认 10 / 120 / 300）；校园网共用出口 IP 时可调高 `RATE_LIMIT_AUTH`。Cloudflare 上改 `wrangler.toml` 的 `[[ratelimits]]` |

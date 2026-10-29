@@ -86,6 +86,8 @@ export function nodePlatform(opts: { db: DB; dataDir: string; env: Record<string
   const rooms = new Map<string, Room>()
   // 部署在反向代理之后时设为 true，才信任 X-Forwarded-For
   const trustProxy = opts.env.TRUST_PROXY === 'true'
+  // 上游代理提供的真实 IP 头（如 Cloudflare 的 CF-Connecting-IP），优先于 X-Forwarded-For
+  const ipHeader = String(opts.env.CLIENT_IP_HEADER ?? '').trim()
   const geoReader = config.geo.mmdbPath ? new Reader<CountryResponse>(readFileSync(config.geo.mmdbPath)) : null
 
   const p: NodePlatform = {
@@ -151,9 +153,14 @@ export function nodePlatform(opts: { db: DB; dataDir: string; env: Record<string
       }
     },
     clientIp(req, rawEnv) {
+      if (ipHeader) {
+        const v = req.headers.get(ipHeader)?.trim()
+        if (v) return v
+      }
       if (trustProxy) {
+        // 取最后一项，即紧邻的代理看到的地址；前面的项由客户端自带，可以伪造
         const xff = req.headers.get('x-forwarded-for')
-        if (xff) return xff.split(',')[0].trim()
+        if (xff) return xff.split(',').at(-1)!.trim()
         const real = req.headers.get('x-real-ip')
         if (real) return real
       }
